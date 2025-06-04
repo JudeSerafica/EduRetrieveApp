@@ -106,7 +106,6 @@ function Dashboard() {
           <div key={module.id} className="module-card">
             <div className="module-card-header">
               <h3>{module.title}</h3>
-              {}
               <button
                 className="save-module-button"
                 onClick={() => handleToggleSave(module.id, module.title)}

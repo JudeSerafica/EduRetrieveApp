@@ -8,6 +8,7 @@ const moduleModel = require('./model/moduleModel');
 const { generateContent } = require('./model/Model.js');
 const chatRoutes = require('./routes/chatRoutes');
 const checkEmailRoute = require('./routes/authRoutes.js');
+const analyticsRoutes = require('./routes/analyticsRoute.js');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -57,7 +58,7 @@ app.get('/api/modules', authenticateToken, async (req, res) => {
 
 app.use('/api/chat', chatRoutes);
 app.use('/api/reset-password', checkEmailRoute);
-
+app.use('/api/analytics', analyticsRoutes);
 
 app.listen(PORT, () => {
     console.log(`Node.js server running on http://localhost:${PORT}`);

@@ -22,6 +22,34 @@ async function getUserById(userId) {
 }
 
 /**
+ * Fetches analytics data for a specific user.
+ * @param {string} userId The UID of the user.
+ * @returns {Promise<Object>} An object containing user analytics (e.g., counts).
+ */
+async function getUserAnalytics(userId) {
+  try {
+    const uploadedModulesSnapshot = await db.collection('modules')
+      .where('uploadedBy', '==', userId)
+      .get();
+    const modulesUploaded = uploadedModulesSnapshot.size;
+
+    const savedModulesSnapshot = await db.collection('users')
+      .doc(userId)
+      .collection('savedModules')
+      .get();
+    const modulesSaved = savedModulesSnapshot.size;
+
+    return {
+      modulesUploaded,
+      modulesSaved,
+    };
+  } catch (error) {
+    console.error('Error fetching user analytics:', error);
+    throw new Error('Could not fetch user analytics data.');
+  }
+}
+
+/**
  * Creates or updates a user document in Firestore.
  * @param {string} userId The UID of the user.
  * @param {Object} userData The data to set/update.
@@ -143,5 +171,6 @@ module.exports = {
   saveChatEntry,
   getChatHistory,
   deleteChatEntriesByConversationId,
-  checkEmail
+  checkEmail,
+  getUserAnalytics
 };

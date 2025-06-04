@@ -131,7 +131,7 @@ EduRetrieve/
 │   │   ├── utils/
 │   │   ├── config/
 │   │   └── index.js
-│   ├── EduRetrieve-ServiceAccount.json
+│   ├── EduRetrieve-ServiceAccount.json  # should be the exact same name!
 │   ├── .env
 │   ├── package.json
 │   └── ...
