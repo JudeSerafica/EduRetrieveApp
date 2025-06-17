@@ -70,7 +70,7 @@ This will:
 ### A. Firebase Project Setup
 1. **Create a Firebase Project** in [Firebase Console](https://console.firebase.google.com).
 2. **Enable Services**: Authentication, Firestore Database, and Cloud Storage.
-
+  
 #### Firebase Web App Config (for Client)
 - Go to **Project settings** → "General"
 - Under "Your apps", add a new Web app (</>) and copy the config object.
