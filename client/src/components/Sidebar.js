@@ -1,7 +1,21 @@
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { FaHome, FaComments, FaUpload, FaBookmark, FaSignOutAlt } from 'react-icons/fa';
 
 function Sidebar({ onLogout }) {
+  const [showModal, setShowModal] = useState(false);
+
+  const handleLogout = () => {
+    setShowModal(true);
+  };
+
+  const confirmLogout = () => {
+    setShowModal(false);
+    if (onLogout) {
+      onLogout();
+    }
+  };
+
   return (
     <nav className="dashboard-sidebar">
       <div className="sidebar-top">
@@ -18,13 +32,29 @@ function Sidebar({ onLogout }) {
           <FaBookmark className="sidebar-icon" /> Saves
         </NavLink>
       </div>
+
       <div className="sidebar-bottom">
-        <button onClick={onLogout} className="sidebar-link logout-button">
+        <button className="logout-button" onClick={handleLogout}>
           <FaSignOutAlt className="sidebar-icon" /> Logout
         </button>
+
+        {showModal && (
+          <div className="modal-overlay">
+            <div className="logout-modal" onClick={e => e.stopPropagation()}>
+              <p>Are you sure you want to logout?</p>
+              <div className="modal-buttons">
+                <button onClick={confirmLogout} className="confirm-button">Logout</button>
+                <button onClick={() => setShowModal(false)} className="cancel-button">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   );
 }
 
 export default Sidebar;
+
+
+

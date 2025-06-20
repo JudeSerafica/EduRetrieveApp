@@ -2,16 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebaseConfig';
+
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
-import ForgotPassword from './pages/ForgotPassword'
+import ForgotPassword from './pages/ForgotPassword';
 import DashboardLayout from './layouts/DashboardLayout';
 import DashboardHome from './pages/DashboardHome';
 import Chats from './pages/Chats';
 import Upload from './pages/Upload';
 import Saves from './pages/Saves';
 import HomePageContent from './HomePageContent';
-
 import ProtectedRoute from './components/ProtectedRoute';
 
 function AuthWrapper() {
@@ -20,7 +20,12 @@ function AuthWrapper() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user && (window.location.pathname === '/' || window.location.pathname === '/login' || window.location.pathname === '/signup')) {
+      if (
+        user &&
+        (window.location.pathname === '/' ||
+          window.location.pathname === '/login' ||
+          window.location.pathname === '/signup')
+      ) {
         navigate('/dashboard/home', { replace: true });
       }
       setLoadingInitialAuth(false);
@@ -37,7 +42,7 @@ function AuthWrapper() {
       <Route path="/" element={<HomePageContent />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
-      <Route path='/forgot-password' element={<ForgotPassword/>} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route
         path="/dashboard"
         element={
@@ -52,7 +57,6 @@ function AuthWrapper() {
         <Route path="upload" element={<Upload />} />
         <Route path="saves" element={<Saves />} />
       </Route>
-
       <Route path="*" element={<div>404 - Page Not Found</div>} />
     </Routes>
   );
