@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import useAuthStatus from '../hooks/useAuthStatus';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 
 function Upload() {
   const { user } = useAuthStatus();
@@ -8,6 +9,7 @@ function Upload() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [file, setFile] = useState(null);
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -19,43 +21,54 @@ function Upload() {
       setMessage('You must be logged in to upload a module.');
       return;
     }
+
     if (!title.trim() || !description.trim()) {
       setMessage('Module title and outline cannot be empty.');
       return;
     }
 
     setIsSubmitting(true);
+    let fileUrl = null;
 
     try {
-      const token = await user.getIdToken();
+      // 1. Upload file to storage if selected
+      if (file) {
+        const fileExt = file.name.split('.').pop();
+        const filePath = `${user.id}/${Date.now()}.${fileExt}`;
 
-      const response = await fetch('/api/upload-module', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          title: title,
-          description: description,
-        }),
-      });
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('eduretrieve')
+          .upload(filePath, file, { upsert: true });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Upload failed');
+        if (uploadError) throw uploadError;
+
+        const { data: publicData } = supabase.storage
+          .from('eduretrieve')
+          .getPublicUrl(filePath);
+
+        fileUrl = publicData.publicUrl;
       }
 
-      const data = await response.json();
-      setMessage(data.message);
+      // 2. Insert metadata to `modules` table
+      const { error } = await supabase.from('modules').insert({
+        title,
+        description,
+        uploadedBy: user.email,
+        uploadedAt: new Date().toISOString(),
+        user_id: user.id,
+        file_url: fileUrl,
+      });
+
+      if (error) throw error;
+
+      setMessage('Module uploaded successfully!');
       setTitle('');
       setDescription('');
-
-      setTimeout(() => navigate('/dashboard'), 2000);
-
+      setFile(null);
+      setTimeout(() => navigate('/dashboard'), 1500);
     } catch (error) {
       console.error('Upload error:', error);
-      setMessage(`Upload failed: ${error.message}`);
+      setMessage(`Upload failed: ${error.message || JSON.stringify(error)}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -89,6 +102,16 @@ function Upload() {
           ></textarea>
         </div>
 
+        <div className="form-group">
+          <label htmlFor="file">Attach File (optional):</label>
+          <input
+            type="file"
+            id="file"
+            accept=".pdf,.doc,.docx,.ppt,.pptx"
+            onChange={(e) => setFile(e.target.files[0])}
+          />
+        </div>
+
         <button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Submitting...' : 'Submit Module Outline'}
         </button>
@@ -100,3 +123,13 @@ function Upload() {
 }
 
 export default Upload;
+
+
+
+
+
+
+
+
+
+

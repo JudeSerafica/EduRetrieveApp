@@ -1,21 +1,21 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore'
+import { getAnalytics } from "firebase/analytics";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyBWaApRm41MmBEB2-INOaYz6lMbNkZ_WF4",
-  authDomain: "eduretrieve-4e1c0.firebaseapp.com",
-  projectId: "eduretrieve-4e1c0",
-  storageBucket: "eduretrieve-4e1c0.firebasestorage.app",
-  messagingSenderId: "361479179209",
-  appId: "1:361479179209:web:dc9ff450d82ef5f2303618",
-  measurementId: "G-N8WMNKPZV3"
+  apiKey: "AIzaSyBg5OqXtuZrYV5qUQQ_xd7mLSae58epzsc",
+  authDomain: "eduretrieve-4b630.firebaseapp.com",
+  projectId: "eduretrieve-4b630",
+  storageBucket: "eduretrieve-4b630.firebasestorage.app",
+  messagingSenderId: "362023692609",
+  appId: "1:362023692609:web:8cbc83b0160bed59d619c0",
+  measurementId: "G-8DM3F2YK49"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const analytics = getAnalytics(app);
 
-export { auth, db };
+export { auth, db, analytics };

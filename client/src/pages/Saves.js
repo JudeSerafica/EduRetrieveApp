@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { db } from '../firebaseConfig';
-import { collection, getDocs, doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { supabase } from '../supabaseClient';
 import useAuthStatus from '../hooks/useAuthStatus';
 import { FaBookmark } from 'react-icons/fa';
 
@@ -10,7 +9,7 @@ function Saves() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchSavedModulesDetails = useCallback(async () => {
+  const fetchSavedModules = useCallback(async () => {
     if (!user || authLoading) {
       setSavedModules([]);
       setLoading(false);
@@ -21,29 +20,32 @@ function Saves() {
     setError(null);
 
     try {
-      const userSavedModulesRef = collection(db, `users/${user.uid}/savedModules`);
-      const savedSnapshot = await getDocs(userSavedModulesRef);
-      const savedModulesPromises = [];
+      // Step 1: Get all saved module references
+      const { data: savedData, error: savedError } = await supabase
+        .from('save_modules')
+        .select('module_id')
+        .eq('user_id', user.id);
 
-      savedSnapshot.forEach(savedDoc => {
-        const moduleId = savedDoc.id;
+      if (savedError) throw savedError;
 
-        const moduleDocRef = doc(db, 'modules', moduleId);
-        savedModulesPromises.push(
-          getDoc(moduleDocRef).then(moduleSnap => {
-            if (moduleSnap.exists()) {
-              return { id: moduleSnap.id, ...moduleSnap.data() };
-            }
-            return null;
-          })
-        );
-      });
+      const moduleIds = savedData.map(row => row.module_id);
 
-      const fetchedDetails = await Promise.all(savedModulesPromises);
-      setSavedModules(fetchedDetails.filter(module => module !== null));
+      if (moduleIds.length === 0) {
+        setSavedModules([]);
+        return;
+      }
 
+      // Step 2: Fetch actual module data
+      const { data: modulesData, error: modulesError } = await supabase
+        .from('modules')
+        .select('*')
+        .in('id', moduleIds);
+
+      if (modulesError) throw modulesError;
+
+      setSavedModules(modulesData);
     } catch (err) {
-      console.error('Error fetching saved module details:', err);
+      console.error('Error fetching saved modules:', err);
       setError('Failed to load your saved modules. Please try again.');
     } finally {
       setLoading(false);
@@ -51,8 +53,8 @@ function Saves() {
   }, [user, authLoading]);
 
   useEffect(() => {
-    fetchSavedModulesDetails();
-  }, [fetchSavedModulesDetails]);
+    fetchSavedModules();
+  }, [fetchSavedModules]);
 
   const handleUnsaveModule = async (moduleId) => {
     if (!user) {
@@ -61,11 +63,13 @@ function Saves() {
     }
 
     try {
-      const savedModuleDocRef = doc(db, `users/${user.uid}/savedModules`, moduleId);
-      await deleteDoc(savedModuleDocRef);
+      await supabase
+        .from('save_modules')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('module_id', moduleId);
 
-      setSavedModules(prevModules => prevModules.filter(m => m.id !== moduleId));
-      console.log(`Module ${moduleId} unsaved from Saves page.`);
+      setSavedModules(prev => prev.filter(m => m.id !== moduleId));
       setError(null);
     } catch (err) {
       console.error('Error unsaving module:', err);
@@ -73,13 +77,8 @@ function Saves() {
     }
   };
 
-  if (authLoading) {
-    return <div className="dashboard-loading">Loading user authentication...</div>;
-  }
-
-  if (!user) {
-    return <div className="dashboard-not-logged-in">Please log in to view your saved modules.</div>;
-  }
+  if (authLoading) return <div className="dashboard-loading">Loading user authentication...</div>;
+  if (!user) return <div className="dashboard-not-logged-in">Please log in to view your saved modules.</div>;
 
   return (
     <div className="dashboard-content-page">
@@ -87,11 +86,13 @@ function Saves() {
       {loading && <div className="dashboard-loading">Loading saved modules...</div>}
       {error && <div className="dashboard-error">{error}</div>}
       {!loading && savedModules.length === 0 && (
-        <div className="dashboard-empty">You haven't saved any modules yet. Go to the dashboard to save some!</div>
+        <div className="dashboard-empty">
+          You haven't saved any modules yet. Go to the dashboard to save some!
+        </div>
       )}
 
       <div className="module-list">
-        {!loading && savedModules.map((module) => (
+        {!loading && savedModules.map(module => (
           <div key={module.id} className="module-card">
             <div className="module-card-header">
               <h3>{module.title}</h3>
@@ -104,10 +105,26 @@ function Saves() {
                 <FaBookmark className="saved-icon" />
               </button>
             </div>
+
             <p><strong>Outline:</strong></p>
             <p className="module-description">{module.description}</p>
+
+            {module.file_url && (
+              <p>
+                <a
+                  href={module.file_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="view-file-link"
+                >
+                  📎 View Uploaded File
+                </a>
+              </p>
+            )}
+
             <p className="module-meta">
-                Uploaded by: {module.uploadedBy} at {module.uploadedAt ? new Date(module.uploadedAt.toDate()).toLocaleString() : 'N/A'}
+              Uploaded by: {module.uploadedBy}<br />
+              at {module.uploadedAt ? new Date(module.uploadedAt).toLocaleString() : 'N/A'}
             </p>
           </div>
         ))}
@@ -117,3 +134,7 @@ function Saves() {
 }
 
 export default Saves;
+
+
+
+
