@@ -3,10 +3,6 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 import { useNavigate } from 'react-router-dom';
 
-/**
- * Custom React Hook to manage user authentication status and fetch protected data.
- * @returns {object} An object containing user, loading status, protected data, and error state.
- */
 const useAuthStatus = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -18,13 +14,16 @@ const useAuthStatus = () => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
-      if (!currentUser) {
-        navigate('/login');
-      }
     });
 
     return () => unsubscribe();
-  }, [navigate]);
+  }, []);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login');
+    }
+  }, [loading, user, navigate]);
 
   useEffect(() => {
     const fetchProtectedData = async () => {

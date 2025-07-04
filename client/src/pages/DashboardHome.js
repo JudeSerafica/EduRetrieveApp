@@ -1,62 +1,59 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { FaRegBookmark } from 'react-icons/fa';
 import useAuthStatus from '../hooks/useAuthStatus';
 
 function Dashboard() {
   const { user, loading: authLoading } = useAuthStatus();
+  const navigate = useNavigate();
   const [modules, setModules] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [savedModuleIds, setSavedModuleIds] = useState(new Set());
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (authLoading || !user) return;
+    const fetchModules = async () => {
+      const { data, error } = await supabase
+        .from('modules')
+        .select('*')
+        .order('uploadedAt', { ascending: false });
 
-      setLoading(true);
-      setError(null);
+      if (data) setModules(data);
+    };
 
-      try {
-        // Fetch all uploaded modules
-        const { data: modulesData, error: modulesError } = await supabase
-          .from('modules')
-          .select('*')
-          .order('uploadedAt', { ascending: false });
+    fetchModules();
+  }, []);
 
-        if (modulesError) throw modulesError;
+  // ✅ Fetch user's saved modules
+  useEffect(() => {
+    const fetchSaved = async () => {
+      if (!user) return;
 
-        // Fetch saved module IDs for current user
-        const { data: savedData, error: savedError } = await supabase
-          .from('save_modules')
-          .select('module_id')
-          .eq('user_id', user.id);
+      const { data, error } = await supabase
+        .from('save_modules')
+        .select('module_id')
+        .eq('user_id', user.id);
 
-        if (savedError) throw savedError;
-
-        const savedIds = new Set(savedData.map((row) => row.module_id));
-        setSavedModuleIds(savedIds);
-
-        // Filter out already saved modules
-        const filteredModules = modulesData.filter((m) => !savedIds.has(m.id));
-        setModules(filteredModules);
-      } catch (err) {
-        console.error('Error fetching data for dashboard:', err);
-        setError('Failed to load modules. Please try again.');
-      } finally {
-        setLoading(false);
+      if (data) {
+        const ids = new Set(data.map((row) => row.module_id));
+        setSavedModuleIds(ids);
       }
     };
 
-    fetchData();
-  }, [authLoading, user]);
+    fetchSaved();
+  }, [user]);
 
+  // ✅ Save or Unsave a module
   const handleToggleSave = async (moduleId, moduleTitle) => {
-    if (!user) return alert('You must be logged in to save modules!');
+    if (!user) {
+      alert('You must be logged in to save modules.');
+      return;
+    }
 
     const isSaved = savedModuleIds.has(moduleId);
+
     try {
       if (isSaved) {
+        // Unsave
         await supabase
           .from('save_modules')
           .delete()
@@ -69,74 +66,70 @@ function Dashboard() {
           return updated;
         });
       } else {
-        await supabase
-          .from('save_modules')
-          .insert({ user_id: user.id, module_id: moduleId, title: moduleTitle });
+        // Save
+        const { error } = await supabase.from('save_modules').insert({
+          user_id: user.id,
+          module_id: moduleId,
+          title: moduleTitle,
+        });
+
+        if (error) throw error;
 
         setSavedModuleIds((prev) => new Set(prev).add(moduleId));
-        setModules((prev) => prev.filter((m) => m.id !== moduleId));
+        navigate('/dashboard/saves');
       }
     } catch (err) {
-      console.error('Save/unsave error:', err);
-      setError(`Failed to ${isSaved ? 'unsave' : 'save'} module. Please try again.`);
+      console.error('❌ Save/Unsave error:', err.message);
+      alert(`Error: ${err.message}`);
     }
   };
-
-  if (authLoading) return <div className="dashboard-loading">Loading user authentication...</div>;
-  if (!user) return <div className="dashboard-not-logged-in">Please log in to view modules.</div>;
 
   return (
     <div className="dashboard-page">
       <h2>Available Modules</h2>
-      {loading && <div className="dashboard-loading">Loading modules...</div>}
-      {error && <div className="dashboard-error">{error}</div>}
-      {!loading && modules.length === 0 && (
-        <div className="dashboard-empty">No modules available yet. Upload one or check your saved list!</div>
-      )}
       <div className="module-list">
-        {!loading &&
-          modules.map((module) => (
-            <div key={module.id} className="module-card">
-              <div className="module-card-header">
-                <h3>{module.title}</h3>
-                <button
-                  className="save-module-button"
-                  onClick={() => handleToggleSave(module.id, module.title)}
-                  aria-label="Save module"
-                  title="Save module"
-                >
-                  <FaRegBookmark className="unsaved-icon" />
-                </button>
-              </div>
-
-              <p><strong>Outline:</strong></p>
-              <p className="module-description">{module.description}</p>
-
-              {module.file_url && (
-                <p>
-                  <a
-                    href={module.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="view-file-link"
-                  >
-                    📎 View Uploaded File
-                  </a>
-                </p>
-              )}
-
-              <p className="module-meta">
-                Uploaded by: {module.uploadedBy} <br />
-                at {module.uploadedAt ? new Date(module.uploadedAt).toLocaleString() : 'N/A'}
-              </p>
+        {modules.map((module) => (
+          <div key={module.id} className="module-card">
+            <div className="module-card-header">
+              <h3>{module.title}</h3>
+              <button
+                onClick={() => handleToggleSave(module.id, module.title)}
+                className="save-module-button"
+              >
+                <FaRegBookmark
+                  className={`save-icon ${
+                    savedModuleIds.has(module.id) ? 'saved' : 'unsaved'
+                  }`}
+                />
+              </button>
             </div>
-          ))}
+            <p>{module.description}</p>
+            {module.file_url && (
+              <p>
+                <a href={module.file_url} target="_blank" rel="noopener noreferrer">
+                  📎 View Uploaded File
+                </a>
+              </p>
+            )}
+            <p>
+              Uploaded by: {module.uploadedBy} <br />
+              at {new Date(module.uploadedAt).toLocaleString()}
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
 export default Dashboard;
+
+
+
+
+
+
+
 
 
 

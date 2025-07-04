@@ -1,3 +1,4 @@
+// Upload.js
 import React, { useState } from 'react';
 import useAuthStatus from '../hooks/useAuthStatus';
 import { useNavigate } from 'react-router-dom';
@@ -14,65 +15,82 @@ function Upload() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleUpload = async (e) => {
-    e.preventDefault();
-    setMessage('');
+  e.preventDefault();
+  setMessage('');
 
-    if (!user) {
-      setMessage('You must be logged in to upload a module.');
-      return;
+  if (!user) {
+    setMessage('You must be logged in to upload a module.');
+    return;
+  }
+
+  if (!title.trim() || !description.trim()) {
+    setMessage('Module title and outline cannot be empty.');
+    return;
+  }
+
+  setIsSubmitting(true);
+  let fileUrl = null;
+
+  try {
+    if (file) {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('eduretrieve')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicData, error: publicUrlError } = supabase.storage
+        .from('eduretrieve')
+        .getPublicUrl(filePath);
+
+      if (publicUrlError) throw publicUrlError;
+
+      fileUrl = publicData.publicUrl;
     }
 
-    if (!title.trim() || !description.trim()) {
-      setMessage('Module title and outline cannot be empty.');
-      return;
-    }
+    const moduleData = {
+      title,
+      description,
+      uploadedBy: user.email,
+      uploadedAt: new Date().toISOString(),
+      user_id: user.id, // ✅ fixed here
+      file_url: fileUrl,
+    };
 
-    setIsSubmitting(true);
-    let fileUrl = null;
+    console.log("DEBUG: Uploading module with data:", moduleData);
 
-    try {
-      // 1. Upload file to storage if selected
-      if (file) {
-        const fileExt = file.name.split('.').pop();
-        const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+    const { data, error: insertError } = await supabase
+      .from('modules')
+      .insert(moduleData)
+      .select()
+      .single();
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('eduretrieve')
-          .upload(filePath, file, { upsert: true });
+    if (insertError) throw insertError;
 
-        if (uploadError) throw uploadError;
+    setMessage('✅ Module uploaded successfully!');
+    setTitle('');
+    setDescription('');
+    setFile(null);
 
-        const { data: publicData } = supabase.storage
-          .from('eduretrieve')
-          .getPublicUrl(filePath);
+    // 🧠 Remove module cache to refresh dashboard view
+    sessionStorage.removeItem('modules');
 
-        fileUrl = publicData.publicUrl;
-      }
+    setTimeout(() => {
+      navigate('/dashboard');
+    }, 1500);
 
-      // 2. Insert metadata to `modules` table
-      const { error } = await supabase.from('modules').insert({
-        title,
-        description,
-        uploadedBy: user.email,
-        uploadedAt: new Date().toISOString(),
-        user_id: user.id,
-        file_url: fileUrl,
-      });
+  } catch (error) {
+    console.error('🚫 Upload error:', error);
+    const errorMsg = error?.message || JSON.stringify(error, null, 2) || 'Unknown error';
+    setMessage(`Upload failed: ${errorMsg}`);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
-      if (error) throw error;
-
-      setMessage('Module uploaded successfully!');
-      setTitle('');
-      setDescription('');
-      setFile(null);
-      setTimeout(() => navigate('/dashboard'), 1500);
-    } catch (error) {
-      console.error('Upload error:', error);
-      setMessage(`Upload failed: ${error.message || JSON.stringify(error)}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
     <div className="upload-page">
@@ -102,16 +120,6 @@ function Upload() {
           ></textarea>
         </div>
 
-        <div className="form-group">
-          <label htmlFor="file">Attach File (optional):</label>
-          <input
-            type="file"
-            id="file"
-            accept=".pdf,.doc,.docx,.ppt,.pptx"
-            onChange={(e) => setFile(e.target.files[0])}
-          />
-        </div>
-
         <button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Submitting...' : 'Submit Module Outline'}
         </button>
@@ -123,6 +131,7 @@ function Upload() {
 }
 
 export default Upload;
+
 
 
 

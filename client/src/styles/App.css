@@ -495,6 +495,18 @@ p#message, .auth-form-card .auth-message.success {
     text-align: center;
 }
 
+.modal {
+  position: fixed;
+  z-index: 1000;
+  background: white;
+  /* other styles */
+}
+
+.dashboard-page {
+  filter: blur(0); /* Ensure background is visible */
+}
+
+
 .dashboard-loading, .dashboard-not-logged-in, .dashboard-empty, .dashboard-error {
     text-align: center;
     padding: 20px;

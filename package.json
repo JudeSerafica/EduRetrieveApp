@@ -9,7 +9,7 @@
         "install-all": "npm install && npm install --prefix client && npm install --prefix server"
     },
     "dependencies": {
-        "@supabase/supabase-js": "^2.50.2",
+        "@supabase/supabase-js": "^2.50.3",
         "concurrently": "^9.1.2",
         "eduretrieve-monorepo": "file:"
     }
