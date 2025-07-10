@@ -264,7 +264,7 @@ function Chats() {
           {chatHistorySessions.map((session) => (
             <li
               key={session.id}
-              className={`chat-history-item ${activeSessionId === session.id ? 'active-session' : ''}`}
+                className={`chat-history-item ${activeSessionId === session.id ? 'active-session' : ''}`}
               onClick={() => loadChatSession(session)}
             >
               <FaComments className="chat-folder-icon" size="1.2em" />

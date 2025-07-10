@@ -10,17 +10,27 @@ function LoginPage() {
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
-    e.preventDefault();
-    setError('');
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      console.log('User logged in successfully.');
-      navigate('/dashboard');
-    } catch (err) {
-      console.error('Login error:', err.message);
-      setError(err.message);
-    }
-  };
+  e.preventDefault();
+  setError('');
+
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    console.log('🟢 Login initiated... Waiting for auth state');
+
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        console.log('✅ Firebase confirmed login:', user.uid);
+        unsubscribe(); // stop listening
+        navigate('/dashboard');
+      }
+    });
+
+  } catch (err) {
+    console.error('Login error:', err.message);
+    setError(err.message);
+  }
+};
+
 
   return (
     <div className="auth-container">

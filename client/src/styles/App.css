@@ -544,6 +544,95 @@ p#message, .auth-form-card .auth-message.success {
     justify-content: space-between;
 }
 
+.module-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  row-gap: 3rem;
+  column-gap: 1rem;
+  padding: 16px;
+  padding-bottom: 32px; /* ✅ adds bottom space */
+}
+
+.view-file-button {
+  background-color: #f0f0f0;
+  color: #333;
+  padding: 6px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-top: 8px;
+}
+
+.view-file-button:hover {
+  background-color: #e2e2e2;
+}
+
+
+.dashboard-page {
+  padding-bottom: 40px; /* ✅ extra space at the bottom of entire page */
+}
+
+.module-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  height: 100%;
+  position: relative;
+  transition: transform 0.2s ease;
+  max-height: 100%; /* prevent overflow */
+  overflow: hidden; /* ensure nothing leaks out visually */
+  word-wrap: break-word; /* wrap long words */
+}
+
+.module-card:hover {
+  transform: translateY(-4px);
+}
+
+.module-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.save-module-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: #f1c40f;
+}
+
+.module-card-content {
+  flex-grow: 1;
+  margin-top: 8px;
+}
+
+.module-card-footer {
+  margin-top: 12px;
+}
+
+.delete-module-button {
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px;
+  width: 100%;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.2s;
+}
+
+.delete-module-button:hover {
+  background-color: #c0392b;
+}
+
 .module-card:hover {
     transform: translateY(-3px);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
@@ -585,6 +674,51 @@ p#message, .auth-form-card .auth-message.success {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 15px;
+}
+
+/* Styles for the modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-box {
+  background-color: #fff;
+  padding: 16px;
+  border-radius: 7px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  text-align: center; /* Center the text */
+}
+
+.modal-buttons {
+  margin-top: 15px;
+  display: flex;
+  justify-content: space-around; /* Space buttons evenly */
+}
+
+.modal-logout-btn,
+.modal-cancel-btn {
+  padding: 8px 10px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.modal-logout-btn {
+  background-color: #e53935;
+  color: #fff;
+}
+
+.modal-cancel-btn {
+  background-color: #eee; 
+  color: #333;
 }
 
 .save-module-button {

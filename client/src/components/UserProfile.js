@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebaseConfig';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { FaUserCircle } from 'react-icons/fa'; //include this if want pfp { FaCamera }
+import { supabase } from '../supabaseClient';
 
 function UserProfile({ user }) {
   const [username, setUsername] = useState('');
@@ -11,37 +12,72 @@ function UserProfile({ user }) {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      if (user) {
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists()) {
-          const userData = userDocSnap.data();
-          setUsername(userData.username || '');
-          setFullName(userData.fullName || '');
-          setPfpUrl(userData.pfpUrl || '');
-        }
-      }
-    };
-    fetchUserProfile();
-  }, [user]);
+  const fetchUserProfile = async () => {
+    if (user) {
+      try {
+        const token = await user.getIdToken();
 
-  const handleSaveProfile = async () => {
-    if (!user) return;
-    setMessage('');
-    try {
-      const userDocRef = doc(db, 'users', user.uid);
-      await updateDoc(userDocRef, {
-        username: username,
-        fullName: fullName,
-      });
-      setMessage('Profile updated successfully!');
-      setIsEditing(false);
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      setMessage('Failed to update profile.');
+        const res = await fetch('http://localhost:4000/get-user-profile', {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const result = await res.json();
+        if (res.ok && result.profile) {
+          const { username, fullName, pfpUrl } = result.profile;
+          setUsername(username || '');
+          setFullName(fullName || '');
+          setPfpUrl(pfpUrl || '');
+        } else {
+          console.warn('No profile found or fetch error:', result.error);
+        }
+      } catch (err) {
+        console.error('❌ Failed to fetch profile:', err.message);
+      }
     }
   };
+
+  fetchUserProfile();
+}, [user]);
+
+
+const handleSaveProfile = async () => {
+  if (!user) return;
+  setMessage('');
+
+  try {
+    const token = await user.getIdToken();
+
+    const response = await fetch('http://localhost:4000/sync-user-profile', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        username,
+        fullName,
+        pfpUrl
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error('❌ Backend update error:', result);
+      throw new Error(result.error || 'Failed to update profile.');
+    }
+
+    setMessage(result.message || '✅ Profile updated!');
+    setIsEditing(false);
+  } catch (err) {
+    console.error('❌ Error updating profile:', err.message);
+    setMessage('❌ Failed to update profile.');
+  }
+};
+
 
   // const handlePfpChange = (e) => {
   //   setMessage('PFP upload not yet implemented.');

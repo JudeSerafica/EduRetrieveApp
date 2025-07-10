@@ -12,8 +12,9 @@
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
     "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.50.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
+    "dotenv": "^16.6.1",
     "eduretrieve-monorepo": "file:..",
     "express": "^5.1.0",
     "firebase-admin": "^13.4.0",
@@ -21,4 +22,5 @@
     "react-markdown": "^10.1.0",
     "server": "file:"
   }
+
 }

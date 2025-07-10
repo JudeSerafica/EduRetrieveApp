@@ -20,7 +20,7 @@ function ProgressAnalytics({ user }) {
       setError(null);
 
       try {
-        const response = await fetch(`http://localhost:5000/api/analytics/${user.uid}`);
+        const response = await fetch(`http://localhost:4000/api/analytics/${user.uid}`);
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.error || 'Failed to fetch analytics.');

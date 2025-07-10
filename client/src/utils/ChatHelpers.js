@@ -26,7 +26,8 @@ export const formatFirebaseTimestamp = (timestamp) => {
   return date.toLocaleString(undefined, options);
 };
 
-export const generateUniqueId = () => `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+export const generateUniqueId = () =>
+  `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 const serverBaseUrl = 'http://localhost:5000';
 

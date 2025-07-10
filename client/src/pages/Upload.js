@@ -1,11 +1,10 @@
-// Upload.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; 
 import useAuthStatus from '../hooks/useAuthStatus';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { getAuth } from 'firebase/auth';
 
 function Upload() {
-  const { user } = useAuthStatus();
+  const { user, authLoading } = useAuthStatus(); // Firebase user
   const navigate = useNavigate();
 
   const [title, setTitle] = useState('');
@@ -14,83 +13,78 @@ function Upload() {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      console.warn("⛔ No user logged in");
+      return;
+    }
+    console.log("✅ User ready:", user.uid);
+  }, [authLoading, user]);
+
   const handleUpload = async (e) => {
-  e.preventDefault();
-  setMessage('');
+    e.preventDefault();
+    setMessage('');
 
-  if (!user) {
-    setMessage('You must be logged in to upload a module.');
-    return;
-  }
-
-  if (!title.trim() || !description.trim()) {
-    setMessage('Module title and outline cannot be empty.');
-    return;
-  }
-
-  setIsSubmitting(true);
-  let fileUrl = null;
-
-  try {
-    if (file) {
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${user.id}/${Date.now()}.${fileExt}`;
-
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('eduretrieve')
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data: publicData, error: publicUrlError } = supabase.storage
-        .from('eduretrieve')
-        .getPublicUrl(filePath);
-
-      if (publicUrlError) throw publicUrlError;
-
-      fileUrl = publicData.publicUrl;
+    if (!user) {
+      setMessage('You must be logged in to upload a module.');
+      return;
     }
 
-    const moduleData = {
-      title,
-      description,
-      uploadedBy: user.email,
-      uploadedAt: new Date().toISOString(),
-      user_id: user.id, // ✅ fixed here
-      file_url: fileUrl,
-    };
+    if (!title.trim() || !description.trim()) {
+      setMessage('Module title and outline cannot be empty.');
+      return;
+    }
 
-    console.log("DEBUG: Uploading module with data:", moduleData);
+    setIsSubmitting(true);
 
-    const { data, error: insertError } = await supabase
-      .from('modules')
-      .insert(moduleData)
-      .select()
-      .single();
+    try {
+      const auth = getAuth();
+      const firebaseUser = auth.currentUser;
 
-    if (insertError) throw insertError;
+      if (!firebaseUser) throw new Error("Failed to retrieve Firebase user.");
 
-    setMessage('✅ Module uploaded successfully!');
-    setTitle('');
-    setDescription('');
-    setFile(null);
+      const token = await firebaseUser.getIdToken(); // 🔐 Firebase ID token
 
-    // 🧠 Remove module cache to refresh dashboard view
-    sessionStorage.removeItem('modules');
+      // === 📤 Upload via backend API using FormData ===
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('description', description);
+      if (file) {
+        formData.append('file', file);
+      }
 
-    setTimeout(() => {
-      navigate('/dashboard');
-    }, 1500);
+      const response = await fetch('http://localhost:4000/upload-module', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`, // 🔐 Pass Firebase token
+        },
+        body: formData,
+      });
 
-  } catch (error) {
-    console.error('🚫 Upload error:', error);
-    const errorMsg = error?.message || JSON.stringify(error, null, 2) || 'Unknown error';
-    setMessage(`Upload failed: ${errorMsg}`);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+      const result = await response.json();
+      if (!response.ok) {
+        console.error("🛑 Backend responded with error:", result.error);
+        throw new Error(result.error || 'Upload failed.');
+      }
 
+      // === ✅ Success ===
+      setMessage('✅ Module uploaded successfully!');
+      setTitle('');
+      setDescription('');
+      setFile(null);
+      sessionStorage.removeItem('modules');
+
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1500);
+    } catch (err) {
+      console.error('🚫 Upload error:', err);
+      setMessage(`Upload failed: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="upload-page">
@@ -120,6 +114,16 @@ function Upload() {
           ></textarea>
         </div>
 
+        <div className="form-group">
+          <label htmlFor="file">Attach a file (optional):</label>
+          <input
+            type="file"
+            id="file"
+            accept=".pdf,.doc,.docx"
+            onChange={(e) => setFile(e.target.files[0])}
+          />
+        </div>
+
         <button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Submitting...' : 'Submit Module Outline'}
         </button>
@@ -131,14 +135,3 @@ function Upload() {
 }
 
 export default Upload;
-
-
-
-
-
-
-
-
-
-
-
