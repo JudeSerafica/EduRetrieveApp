@@ -1,6 +1,5 @@
-// src/contexts/AuthContext.js
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { supabase } from '../supabaseClient';
 
 const AuthContext = createContext();
 
@@ -9,14 +8,29 @@ export const AuthProvider = ({ children }) => {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser || null);
+    const initSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      const session = data?.session;
+
+      if (error) {
+        console.error('🔴 Error checking session:', error.message);
+        setUser(null);
+      } else {
+        setUser(session?.user || null);
+      }
+
       setAuthLoading(false);
-      console.log('🔁 AuthContext state changed:', firebaseUser?.uid || 'No user');
+    };
+
+    initSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
     });
 
-    return () => unsubscribe();
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   return (

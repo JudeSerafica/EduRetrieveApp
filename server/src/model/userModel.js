@@ -1,176 +1,185 @@
-const { db } = require('../config/firebaseAdminConfig');
-const admin = require('firebase-admin');
-const adminDb = admin.firestore();
+const { supabase } = require('../config/supabaseClient');
 
-/**
- * Fetches a user document from Firestore.
- * @param {string} userId The UID of the user.
- * @returns {Promise<Object|null>} The user data or null if not found.
- */
+// ✅ Utility to format timestamp into YYYY-MM-DD
+function formatDate(date, format = 'daily') {
+  const d = new Date(date);
+  if (format === 'monthly') {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
+  } else if (format === 'weekly') {
+    const onejan = new Date(d.getFullYear(), 0, 1);
+    const week = Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7);
+    return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`; // e.g. 2025-W29
+  } else {
+    return new Date(date).toISOString().split('T')[0]; // YYYY-MM-DD
+  }
+}
+
+// ✅ Get user profile by Supabase user ID
 async function getUserById(userId) {
-  try {
-    const userDocRef = adminDb.collection('users').doc(userId);
-    const userDocSnap = await userDocRef.get();
-    if (userDocSnap.exists) {
-      return { id: userDocSnap.id, ...userDocSnap.data() };
-    }
-    return null;
-  } catch (error) {
-    console.error('Error fetching user by ID:', error);
+  if (!userId) throw new Error('User ID is required');
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (error) {
+    console.error('[getUserById] ❌', error.message);
     throw new Error('Could not fetch user profile.');
   }
+
+  return data;
 }
 
-/**
- * Fetches analytics data for a specific user.
- * @param {string} userId The UID of the user.
- * @returns {Promise<Object>} An object containing user analytics (e.g., counts).
- */
-async function getUserAnalytics(userId) {
-  try {
-    const uploadedModulesSnapshot = await db.collection('modules')
-      .where('uploadedBy', '==', userId)
-      .get();
-    const modulesUploaded = uploadedModulesSnapshot.size;
-
-    const savedModulesSnapshot = await db.collection('users')
-      .doc(userId)
-      .collection('savedModules')
-      .get();
-    const modulesSaved = savedModulesSnapshot.size;
-
-    return {
-      modulesUploaded,
-      modulesSaved,
-    };
-  } catch (error) {
-    console.error('Error fetching user analytics:', error);
-    throw new Error('Could not fetch user analytics data.');
-  }
-}
-
-/**
- * Creates or updates a user document in Firestore.
- * @param {string} userId The UID of the user.
- * @param {Object} userData The data to set/update.
- * @returns {Promise<void>}
- */
+// ✅ Update user profile by user ID
 async function updateUserProfile(userId, userData) {
-  try {
-    const userDocRef = adminDb.collection('users').doc(userId);
-    await userDocRef.set(userData, { merge: true });
-  } catch (error) {
-    console.error('Error updating user profile:', error);
+  if (!userId) throw new Error('User ID is required');
+  if (!userData || typeof userData !== 'object') throw new Error('Invalid user data');
+
+  const { error } = await supabase
+    .from('users')
+    .update(userData)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[updateUserProfile] ❌', error.message);
     throw new Error('Could not update user profile.');
   }
 }
 
+// ✅ Get analytics data: uploads, saves, and upload timeline
+async function getUserAnalytics(userId) {
+  if (!userId) throw new Error('User ID is required');
 
-/**
- * Saves a new chat entry as a sub-collection document under a user's document.
- * @param {string} userId - The ID of the user.
- * @param {string} prompt - The user's input prompt.
- * @param {string} response - The AI's generated response.
- * @param {string} conversationId - The ID of the conversation this chat belongs to.
- * @param {Object} clientTimestamp - The timestamp from the client ({_seconds, _nanoseconds}).
- * @returns {Promise<FirebaseFirestore.DocumentReference>} A promise that resolves to the new document reference.
- */
-const saveChatEntry = async (userId, prompt, response, conversationId, clientTimestamp) => {
-  try {
-    const userDocRef = db.collection('users').doc(userId);
-    const chatHistoryCollectionRef = userDocRef.collection('chatHistory');
+  const [
+    { count: uploadedCount, error: uploadError },
+    { count: savedCount, error: savedError },
+    { data: uploadedData, error: uploadedDataError },
+  ] = await Promise.all([
+    supabase.from('modules').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+    supabase.from('save_modules').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+    supabase.from('modules').select('created_at').eq('user_id', userId),
+  ]);
 
-    const firestoreTimestamp = new admin.firestore.Timestamp(clientTimestamp._seconds, clientTimestamp._nanoseconds);
+  if (uploadError || savedError || uploadedDataError) {
+    throw new Error('Failed to fetch analytics.');
+  }
 
-    const newChatRef = await chatHistoryCollectionRef.add({
-      prompt: prompt,
-      response: response,
-      timestamp: firestoreTimestamp,
-      conversationId: conversationId,
+  const groupBy = (format) => {
+    const map = {};
+    uploadedData.forEach(item => {
+      const key = formatDate(item.created_at, format);
+      map[key] = (map[key] || 0) + 1;
+    });
+    return Object.entries(map)
+      .map(([date, activity]) => ({ date, activity }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  };
+
+  return {
+    modulesUploaded: uploadedCount || 0,
+    modulesSaved: savedCount || 0,
+    activityTimeline: {
+      daily: groupBy('daily'),
+      weekly: groupBy('weekly'),
+      monthly: groupBy('monthly'),
+    },
+  };
+}
+
+// ✅ Save a single chat entry
+async function saveChatEntry(userId, prompt, response, conversationId, clientTimestamp) {
+  if (!userId || !prompt || !response || !conversationId || !clientTimestamp) {
+    throw new Error('Missing required chat entry fields.');
+  }
+
+  const timestamp = new Date(
+    clientTimestamp._seconds * 1000 + Math.floor(clientTimestamp._nanoseconds / 1_000_000)
+  );
+
+  const { error } = await supabase
+    .from('chat_history')
+    .insert({
+      user_id: userId,
+      prompt,
+      response,
+      conversationId,
+      timestamp,
     });
 
-    console.log(`Chat entry saved for user ${userId} with ID: ${newChatRef.id}`);
-    return newChatRef;
-  } catch (error) {
-    console.error(`Error saving chat entry for user ${userId}:`, error);
-    throw new Error('Failed to save chat entry to Firestore.');
+  if (error) {
+    console.error('[saveChatEntry] ❌', error.message);
+    throw new Error('Failed to save chat entry.');
   }
-};
+}
 
-/**
- * Retrieves all chat history entries for a specific user, ordered by timestamp.
- * @param {string} userId - The ID of the user.
- * @returns {Promise<Array<Object>>} A promise that resolves to an array of chat entry objects.
- */
-const getChatHistory = async (userId) => {
-  try {
-    const chatHistoryCollectionRef = db.collection('users').doc(userId).collection('chatHistory');
-    const snapshot = await chatHistoryCollectionRef.orderBy('timestamp', 'desc').get();
+// ✅ Get all chat entries for a user
+async function getChatHistory(userId) {
+  if (!userId) throw new Error('User ID is required');
 
-    const chatEntries = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      timestamp: {
-        _seconds: doc.data().timestamp.seconds,
-        _nanoseconds: doc.data().timestamp.nanoseconds
-      }
-    }));
-    return chatEntries;
-  } catch (error) {
-    console.error(`Error retrieving chat history for user ${userId}:`, error);
-    throw new Error('Failed to retrieve chat history from Firestore.');
+  const { data, error } = await supabase
+    .from('chat_history')
+    .select('*')
+    .eq('user_id', userId)
+    .order('timestamp', { ascending: false });
+
+  if (error) {
+    console.error('[getChatHistory] ❌', error.message);
+    throw new Error('Failed to retrieve chat history.');
   }
-};
 
-/**
- * Deletes all chat entries for a specific user associated with a given conversation ID.
- * @param {string} userId - The ID of the user.
- * @param {string} conversationId - The ID of the conversation to delete.
- * @returns {Promise<number>} A promise that resolves to the number of documents deleted.
- */
-const deleteChatEntriesByConversationId = async (userId, conversationId) => {
-  try {
-    const chatHistoryCollectionRef = db.collection('users').doc(userId).collection('chatHistory');
+  return data.map(entry => ({
+    ...entry,
+    timestamp: {
+      _seconds: Math.floor(new Date(entry.timestamp).getTime() / 1000),
+      _nanoseconds: (new Date(entry.timestamp).getTime() % 1000) * 1_000_000,
+    },
+  }));
+}
 
-    const querySnapshot = await chatHistoryCollectionRef.where('conversationId', '==', conversationId).get();
-
-    if (querySnapshot.empty) {
-      return 0;
-    }
-
-    const batch = db.batch();
-    querySnapshot.forEach(doc => {
-      batch.delete(doc.ref);
-    });
-
-    await batch.commit();
-    console.log(`Successfully deleted ${querySnapshot.size} chat messages for conversation ID: ${conversationId} for user ${userId}.`);
-    return querySnapshot.size;
-  } catch (error) {
-    console.error(`Error deleting chat history for user ${userId}, conversation ${conversationId}:`, error);
-    throw new Error('Failed to delete chat history from Firestore.');
+// ✅ Delete chat entries by conversation ID
+async function deleteChatEntriesByConversationId(userId, conversationId) {
+  if (!userId || !conversationId) {
+    throw new Error('User ID and conversation ID are required.');
   }
-};
 
-const checkEmail = async ( email ) => {
-    try {
-    const usersRef = db.collection('users');
-    const q = usersRef.where('email', '==', email).limit(1);
-    const querySnapshot = await q.get();
+  const { error } = await supabase
+    .from('chat_history')
+    .delete()
+    .eq('user_id', userId)
+    .eq('conversationId', conversationId);
 
-    return !querySnapshot.empty; 
-  } catch (error) {
-    console.error('Error checking user email on server:', error);
-    return res.status(500).json({ error: 'Internal server error.' });
+  if (error) {
+    console.error('[deleteChatEntriesByConversationId] ❌', error.message);
+    throw new Error('Failed to delete chat entries.');
   }
+}
+
+// ✅ Check if a user email exists
+async function checkEmail(email) {
+  if (!email) throw new Error('Email is required');
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[checkEmail] ❌', error.message);
+    throw new Error('Failed to check email.');
+  }
+
+  return !!data;
 }
 
 module.exports = {
   getUserById,
   updateUserProfile,
+  getUserAnalytics,
   saveChatEntry,
   getChatHistory,
   deleteChatEntriesByConversationId,
   checkEmail,
-  getUserAnalytics
 };

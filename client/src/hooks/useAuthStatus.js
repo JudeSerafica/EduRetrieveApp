@@ -1,50 +1,85 @@
-import { useState, useEffect } from 'react';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 
-/**
- * Custom hook for Firebase-only auth (hybrid with Supabase backend via server).
- */
-const useAuthStatus = ({ autoRedirect = true, fetchProtectedData = true, debug = false } = {}) => {
+const useAuthStatus = ({
+  autoRedirect = true,
+  fetchProtectedData = true,
+  debug = false,
+  autoCreateProfile = true,
+} = {}) => {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [protectedData, setProtectedData] = useState(null);
   const [dataError, setDataError] = useState('');
   const navigate = useNavigate();
 
-  // ✅ Track Firebase auth state
   useEffect(() => {
-    const auth = getAuth();
+    let isMounted = true;
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      try {
-        if (firebaseUser) {
-          if (debug) console.log('✅ Firebase user:', firebaseUser.uid);
-          setUser(firebaseUser);
-        } else {
-          if (debug) console.warn('⛔ Firebase user is null');
-          setUser(null);
-        }
-      } catch (err) {
-        console.error('❌ Error during Firebase auth check:', err.message);
+    const loadSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      const session = data?.session;
+
+      if (error) {
+        if (debug) console.error('❌ Error getting session:', error.message);
         setUser(null);
-      } finally {
-        setAuthLoading(false);
+      } else {
+        setUser(session?.user || null);
+        if (debug && session?.user) console.log('✅ Session user:', session.user.id);
+      }
+
+      setAuthLoading(false);
+    };
+
+    loadSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const currentUser = session?.user || null;
+      if (!isMounted) return;
+
+      setUser(currentUser);
+      if (debug) console.log(`🔄 Auth event: ${event}`, currentUser?.id);
+
+      // 🔧 Insert profile if needed
+      if (event === 'SIGNED_IN' && autoCreateProfile && currentUser) {
+        const { data: existing, error: checkError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', currentUser.id)
+          .single();
+
+        if (!existing && !checkError) {
+          const { error: insertErr } = await supabase.from('profiles').insert({
+            id: currentUser.id,
+            email: currentUser.email,
+            username: currentUser.user_metadata?.username || 'guest',
+          });
+
+          if (insertErr && debug) {
+            console.error('❌ Insert profile error:', insertErr.message);
+          } else if (debug) {
+            console.log('✅ Profile created for new user.');
+          }
+        }
       }
     });
 
-    return () => unsubscribe();
-  }, [debug]);
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [debug, autoCreateProfile]);
 
-  // 🔐 Auto redirect if not logged in
   useEffect(() => {
     if (!authLoading && autoRedirect && !user) {
-      console.warn('➡️ Redirecting to /login (no auth)');
+      if (debug) console.warn('➡️ Redirecting to /login (unauthenticated)');
       navigate('/login');
     }
-  }, [authLoading, autoRedirect, user, navigate]);
+  }, [authLoading, autoRedirect, user, navigate, debug]);
 
-  // 🔐 Fetch optional protected backend data
   useEffect(() => {
     let isMounted = true;
 
@@ -52,19 +87,25 @@ const useAuthStatus = ({ autoRedirect = true, fetchProtectedData = true, debug =
       if (!user || !fetchProtectedData) return;
 
       try {
-        const idToken = await user.getIdToken();
-        const response = await fetch('/api/protected-data', {
+        const { data, error } = await supabase.auth.getSession();
+        const token = data?.session?.access_token;
+
+        if (error || !token) throw new Error('No valid Supabase token');
+
+        const res = await fetch('http://localhost:5000/api/protected-data', {
           headers: {
-            Authorization: `Bearer ${idToken}`,
+            Authorization: `Bearer ${token}`,
           },
         });
 
-        const data = await response.json();
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.message || 'Failed to fetch protected data');
+        }
 
-        if (!response.ok) throw new Error(data.message || 'Failed to fetch protected data.');
-
+        const result = await res.json();
         if (isMounted) {
-          setProtectedData(data);
+          setProtectedData(result);
           setDataError('');
         }
       } catch (err) {
@@ -72,15 +113,16 @@ const useAuthStatus = ({ autoRedirect = true, fetchProtectedData = true, debug =
           setProtectedData(null);
           setDataError(err.message);
         }
-        console.error('❌ Protected fetch error:', err.message);
+        if (debug) console.error('❌ Protected fetch error:', err.message);
       }
     };
 
     fetchProtected();
+
     return () => {
       isMounted = false;
     };
-  }, [user, fetchProtectedData]);
+  }, [user, fetchProtectedData, debug]);
 
   return {
     user,

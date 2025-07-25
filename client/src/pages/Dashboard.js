@@ -1,15 +1,16 @@
-import { signOut } from 'firebase/auth';
-import { auth } from '../firebaseConfig';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 import useAuthStatus from '../hooks/useAuthStatus';
 
 function Dashboard() {
-  const { user, loading } = useAuthStatus();
+  const { user, authLoading } = useAuthStatus();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
       console.log('User logged out');
       navigate('/login');
     } catch (error) {
@@ -17,7 +18,7 @@ function Dashboard() {
     }
   };
 
-  if (loading) {
+  if (authLoading) {
     return <div>Loading dashboard...</div>;
   }
 

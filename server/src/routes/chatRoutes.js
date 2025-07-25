@@ -1,15 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const { saveChatEntry, getChatHistory, deleteChatEntriesByConversationId} = require('../model/userModel');
-const authenticateToken  = require('../middleware/authMiddleware');
+const { saveChatEntry, getChatHistory, deleteChatEntriesByConversationId } = require('../model/userModel');
+const authenticateToken = require('../middleware/authMiddleware');
 
+// POST /api/chat/save
 router.post('/save', authenticateToken, async (req, res) => {
   const { prompt, response, conversationId, timestamp } = req.body;
-  const userId = req.user.uid;
+  const userId = req.user.id; // ✅ FIXED
 
   if (!userId || !prompt || !response || !conversationId || !timestamp) {
     return res.status(400).json({ error: 'Missing userId, prompt, response, conversationId, or timestamp.' });
   }
+
   try {
     await saveChatEntry(userId, prompt, response, conversationId, timestamp);
     res.status(200).json({ message: 'Chat entry saved successfully.' });
@@ -19,12 +21,11 @@ router.post('/save', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/chat/history
 router.get('/history', authenticateToken, async (req, res) => {
-  const userId = req.user.uid;
+  const userId = req.user.id; // ✅ FIXED
 
-  if (!userId) {
-    return res.status(400).json({ error: 'Missing userId.' });
-  }
+  if (!userId) return res.status(400).json({ error: 'Missing userId.' });
 
   try {
     const history = await getChatHistory(userId);
@@ -35,9 +36,10 @@ router.get('/history', authenticateToken, async (req, res) => {
   }
 });
 
+// DELETE /api/chat/delete/:conversationId
 router.delete('/delete/:conversationId', authenticateToken, async (req, res) => {
   const { conversationId } = req.params;
-  const userId = req.user.uid;
+  const userId = req.user.id; // ✅ FIXED
 
   if (!userId || !conversationId) {
     return res.status(400).json({ error: 'Missing userId or conversationId.' });
@@ -56,3 +58,4 @@ router.delete('/delete/:conversationId', authenticateToken, async (req, res) => 
 });
 
 module.exports = router;
+

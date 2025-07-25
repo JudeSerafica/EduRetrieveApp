@@ -1,156 +1,164 @@
-export const formatFirebaseTimestamp = (timestamp) => {
-  let seconds;
-  let nanoseconds;
+import { supabase } from '../supabaseClient';
 
-  if (timestamp && typeof timestamp._seconds === 'number') {
-    seconds = timestamp._seconds;
-    nanoseconds = timestamp._nanoseconds;
-  } else if (timestamp && typeof timestamp.seconds === 'number') {
-    seconds = timestamp.seconds;
-    nanoseconds = timestamp.nanoseconds || 0;
-  } else {
+// ------------------------
+// 📅 Format Timestamp
+// ------------------------
+
+/**
+ * Converts various timestamp formats into a human-readable string.
+ */
+export const formatFirebaseTimestamp = (timestamp) => {
+  try {
+    let seconds, nanoseconds;
+
+    if (timestamp?._seconds) {
+      seconds = timestamp._seconds;
+      nanoseconds = timestamp._nanoseconds || 0;
+    } else if (timestamp?.seconds) {
+      seconds = timestamp.seconds;
+      nanoseconds = timestamp.nanoseconds || 0;
+    } else if (typeof timestamp === 'string' || typeof timestamp === 'number') {
+      return new Date(timestamp).toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } else {
+      return 'Invalid Date';
+    }
+
+    const millis = seconds * 1000 + nanoseconds / 1_000_000;
+    return new Date(millis).toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
     return 'Invalid Date';
   }
-
-  const dateInMilliseconds = seconds * 1000 + nanoseconds / 1_000_000;
-  const date = new Date(dateInMilliseconds);
-
-  const options = {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  };
-  return date.toLocaleString(undefined, options);
 };
 
+// ------------------------
+// 🆔 Unique ID Generator
+// ------------------------
+
 export const generateUniqueId = () =>
-  `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  `conv_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-const serverBaseUrl = 'http://localhost:5000';
+// ------------------------
+// 💾 LocalStorage Constants
+// ------------------------
 
-export const fetchChatHistoryApi = async (user) => {
-  if (!user) {
-    throw new Error("User not authenticated to fetch chat history.");
+const CHAT_KEY = 'eduretrieve_chat_sessions';
+
+// ------------------------
+// 📂 Load Chat Sessions
+// ------------------------
+
+/**
+ * Loads chat history sessions from localStorage.
+ */
+export const fetchChatHistoryApi = async () => {
+  try {
+    const raw = localStorage.getItem(CHAT_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.map((s) => ({ ...s, messages: s.messages || [] }))
+      : [];
+  } catch (err) {
+    console.warn('⚠️ Failed to parse chat history from localStorage:', err);
+    return [];
   }
-  const idToken = await user.getIdToken();
+};
 
-  const res = await fetch(`${serverBaseUrl}/api/chat/history`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${idToken}`,
-    },
-  });
+// ------------------------
+// 💬 Save Chat Entry
+// ------------------------
 
-  if (!res.ok) {
-    const errorData = await res.json();
-    throw new Error(errorData.error || 'Failed to fetch chat history.');
-  }
+/**
+ * Saves a new prompt-response pair to localStorage under the given session.
+ */
+export const saveChatEntryApi = async (user, { prompt, response, conversationId, timestamp }) => {
+  let sessions = await fetchChatHistoryApi();
 
-  const data = await res.json();
+  const newMessages = [
+    { type: 'user', text: prompt, timestamp },
+    { type: 'ai', text: response, timestamp },
+  ];
 
-  const sessionsMap = new Map();
-  if (data.chatHistory) {
-    data.chatHistory.forEach(item => {
-      const conversationId = item.conversationId || formatFirebaseTimestamp(item.timestamp).split(',')[0];
+  const existing = sessions.find((s) => s.id === conversationId);
 
-      if (!sessionsMap.has(conversationId)) {
-        sessionsMap.set(conversationId, {
-          id: conversationId,
-          title: `Chat from ${formatFirebaseTimestamp(item.timestamp).split(',')[0]}`,
-          messages: []
-        });
-      }
-
-      sessionsMap.get(conversationId).messages.push({
-        type: 'user',
-        text: item.prompt,
-        timestamp: item.timestamp,
-      });
-
-      sessionsMap.get(conversationId).messages.push({
-        type: 'ai',
-        text: item.response,
-        timestamp: item.timestamp,
-      });
+  if (existing) {
+    existing.messages.push(...newMessages);
+  } else {
+    sessions.unshift({
+      id: conversationId,
+      title: `Chat from ${formatFirebaseTimestamp(timestamp).split(',')[0]}`,
+      messages: newMessages,
     });
   }
 
-  const sessions = Array.from(sessionsMap.values()).sort((a, b) => {
-    const dateA = a.messages[0]?.timestamp ? new Date(a.messages[0].timestamp._seconds * 1000) : new Date(0);
-    const dateB = b.messages[0]?.timestamp ? new Date(b.messages[0].timestamp._seconds * 1000) : new Date(0);
-    return dateB - dateA;
-  });
-
-  return sessions;
+  localStorage.setItem(CHAT_KEY, JSON.stringify(sessions));
 };
 
-export const saveChatEntryApi = async (user, chatData) => {
-  if (!user) {
-    throw new Error("User not authenticated to save chat.");
-  }
-  const idToken = await user.getIdToken();
+// ------------------------
+// ❌ Delete Chat Session
+// ------------------------
 
-  const res = await fetch(`${serverBaseUrl}/api/chat/save`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${idToken}`,
-    },
-    body: JSON.stringify(chatData),
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json();
-    throw new Error(errorData.error || 'Failed to save chat entry to backend.');
-  }
-
-  return await res.json();
+/**
+ * Deletes a chat session by its ID from localStorage.
+ */
+export const deleteChatSessionApi = async (user, sessionId) => {
+  const sessions = await fetchChatHistoryApi();
+  const updated = sessions.filter((s) => s.id !== sessionId);
+  localStorage.setItem(CHAT_KEY, JSON.stringify(updated));
+  return { message: 'Session deleted locally' };
 };
 
-export const deleteChatSessionApi = async (user, sessionIdToDelete) => {
-  if (!user) {
-    throw new Error("User not authenticated to delete chats.");
-  }
-  const idToken = await user.getIdToken();
+// ------------------------
+// 🧠 Call AI Backend
+// ------------------------
 
-  const res = await fetch(`${serverBaseUrl}/api/chat/delete/${sessionIdToDelete}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${idToken}`,
-    },
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json();
-    throw new Error(errorData.error || 'Failed to delete chat session from backend.');
-  }
-
-  return await res.json();
-};
-
+/**
+ * Sends a prompt to the backend AI API and returns the generated response.
+ */
 export const generateContentApi = async (user, prompt) => {
-  if (!user) {
-    throw new Error("User not authenticated to generate content.");
+  if (!prompt || typeof prompt !== 'string') {
+    throw new Error('Invalid prompt');
   }
-  const idToken = await user.getIdToken();
 
-  const res = await fetch(`${serverBaseUrl}/api/generate-content`, {
+  const { data, error } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+
+  if (error || !token) {
+    throw new Error('Missing or invalid Supabase token');
+  }
+
+  const res = await fetch('http://localhost:5000/api/generate-content', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${idToken}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ prompt }),
   });
 
   if (!res.ok) {
-    const errorData = await res.json();
-    throw new Error(errorData.error || 'Something went wrong generating content.');
+    let errorMessage = 'Something went wrong generating content.';
+    try {
+      const errorData = await res.json();
+      errorMessage = errorData.error || errorData.message || errorMessage;
+    } catch {
+      console.warn('⚠️ Could not parse error JSON from /generate-content');
+    }
+    throw new Error(errorMessage);
   }
 
-  return await res.json();
+  return await res.json(); // Expects: { generatedContent: "..." }
 };

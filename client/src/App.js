@@ -1,36 +1,56 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './firebaseConfig';
-
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  useNavigate,
+} from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import { supabase } from './supabaseClient';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ForgotPassword from './pages/ForgotPassword';
 import DashboardLayout from './layouts/DashboardLayout';
 import DashboardHome from './pages/DashboardHome';
 import Chats from './pages/Chats';
-import Upload from './pages/Upload';
 import Saves from './pages/Saves';
 import HomePageContent from './HomePageContent';
 import ProtectedRoute from './components/ProtectedRoute';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function AuthWrapper() {
   const [loadingInitialAuth, setLoadingInitialAuth] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (
-        user &&
-        (window.location.pathname === '/' ||
-          window.location.pathname === '/login' ||
-          window.location.pathname === '/signup')
-      ) {
-        navigate('/dashboard/home', { replace: true });
+    const checkAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      const session = data?.session;
+
+      if (session?.user) {
+        const currentPath = window.location.pathname;
+        const isOnPublicPage =
+          currentPath === '/' || currentPath === '/login' || currentPath === '/signup';
+
+        if (isOnPublicPage) {
+          navigate('/dashboard/home', { replace: true });
+        }
       }
+
       setLoadingInitialAuth(false);
+    };
+
+    checkAuth();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      checkAuth();
     });
-    return () => unsubscribe();
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, [navigate]);
 
   if (loadingInitialAuth) {
@@ -39,10 +59,14 @@ function AuthWrapper() {
 
   return (
     <Routes>
+      {/* Public Routes */}
       <Route path="/" element={<HomePageContent />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      
+
+      {/* Protected Routes */}
       <Route
         path="/dashboard"
         element={
@@ -54,9 +78,10 @@ function AuthWrapper() {
         <Route index element={<DashboardHome />} />
         <Route path="home" element={<DashboardHome />} />
         <Route path="chats" element={<Chats />} />
-        <Route path="upload" element={<Upload />} />
         <Route path="saves" element={<Saves />} />
       </Route>
+
+      {/* Catch-all 404 */}
       <Route path="*" element={<div>404 - Page Not Found</div>} />
     </Routes>
   );
@@ -65,9 +90,12 @@ function AuthWrapper() {
 function App() {
   return (
     <Router>
-      <div className="App">
-        <AuthWrapper />
-      </div>
+      <AuthProvider>
+        <ErrorBoundary>
+          <AuthWrapper />
+          <ToastContainer position="top-right" autoClose={2000} />
+        </ErrorBoundary>
+      </AuthProvider>
     </Router>
   );
 }

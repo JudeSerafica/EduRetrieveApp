@@ -1,76 +1,62 @@
 import React, { useState, useEffect } from 'react';
 
 function ProgressAnalytics({ user }) {
-  const [analyticsData, setAnalyticsData] = useState({
-    modulesUploaded: 0,
-    modulesSaved: 0,
-    discussionsParticipated: 0,
-  });
+  const [uploaded, setUploaded] = useState(0);
+  const [saved, setSaved] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const fetchAnalytics = async () => {
-      if (!user || !user.uid) {
+    const fetchCounts = async () => {
+      if (!user?.id) {
         setLoading(false);
         return;
       }
 
-      setLoading(true);
-      setError(null);
-
       try {
-        const response = await fetch(`http://localhost:4000/api/analytics/${user.uid}`);
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to fetch analytics.');
+        const res = await fetch(`http://localhost:5000/api/analytics/${user.id}`);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to fetch analytics');
         }
-        const data = await response.json();
-        setAnalyticsData(data);
+
+        const data = await res.json();
+        setUploaded(data.modulesUploaded || 0);
+        setSaved(data.modulesSaved || 0);
       } catch (err) {
-        console.error("Error fetching analytics:", err);
-        setError(err.message || 'Could not load analytics data.');
+        console.error('❌ Error loading analytics:', err);
+        setError(err.message);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchAnalytics();
+    fetchCounts();
   }, [user]);
 
-  if (!user) {
-    return <p>Please log in to view analytics.</p>;
-  }
+  if (!user) return <p>Please log in to view your progress.</p>;
 
-  if (loading) {
+  if (loading) return <p>Loading your progress...</p>;
+
+  if (error)
     return (
       <div className="analytics-panel">
-        <h4>Your Progress Analytics</h4>
-        <p>Loading analytics...</p>
+        <h4>Your Progress</h4>
+        <p className="error-message">⚠️ {error}</p>
       </div>
     );
-  }
-
-  if (error) {
-    return (
-      <div className="analytics-panel">
-        <h4>Your Progress Analytics</h4>
-        <p className="error-message">Error: {error}</p>
-        <p>Please try again later.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="analytics-panel">
-      <h4>Your Progress Analytics</h4>
-      <p>This section shows your activity:</p>
-      <ul>
-        <li style={{color: 'green'}}><strong>Modules Uploaded:</strong> {analyticsData.modulesUploaded}</li>
-        <li style={{color: 'green'}}><strong>Modules Saved:</strong> {analyticsData.modulesSaved}</li>
-        {/* <li style={{color: 'green'}}><strong>Discussions Participated:</strong> {analyticsData.discussionsParticipated}</li> */}
+      <h4>Your Progress</h4>
+      <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
+        <li style={{ color: 'green', fontWeight: 'bold' }}>
+          📤 Modules Uploaded: {uploaded}
+        </li>
+        <li style={{ color: 'green', fontWeight: 'bold' }}>
+          📥 Modules Saved: {saved}
+        </li>
       </ul>
-      <p>More detailed analytics will be implemented here later.</p>
     </div>
   );
 }

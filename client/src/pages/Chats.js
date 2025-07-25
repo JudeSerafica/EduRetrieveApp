@@ -9,7 +9,7 @@ import {
   saveChatEntryApi,
   deleteChatSessionApi,
   generateContentApi
-} from '../utils/ChatHelpers';
+} from '../utils/chatHelpers';
 
 function Chats() {
   const { user, loading: authLoading } = useAuthStatus();

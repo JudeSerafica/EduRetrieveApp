@@ -1,75 +1,95 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebaseConfig';
 import { useNavigate, Link } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 
 function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [unverifiedUser, setUnverifiedUser] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
-  e.preventDefault();
-  setError('');
+    e.preventDefault();
+    setError('');
+    setUnverifiedUser(false);
 
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-    console.log('🟢 Login initiated... Waiting for auth state');
-
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        console.log('✅ Firebase confirmed login:', user.uid);
-        unsubscribe(); // stop listening
-        navigate('/dashboard');
-      }
+    const { data, error: loginError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
 
-  } catch (err) {
-    console.error('Login error:', err.message);
-    setError(err.message);
-  }
-};
+    if (loginError) {
+      setError(loginError.message);
+    } else if (!data.user?.email_confirmed_at) {
+      setUnverifiedUser(true);
+      setError('Please verify your email before logging in.');
+    } else {
+      console.log('✅ Login successful:', data.user.id);
+      navigate('/dashboard/home');
+    }
+  };
 
+  const handleResendVerification = async () => {
+    setError('');
+
+    // This is a workaround since Supabase doesn’t yet provide a direct resend method.
+    const { error: resendError } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (resendError) {
+      setError('Failed to resend verification email: ' + resendError.message);
+    } else {
+      alert('📧 Verification email resent! Please check your inbox.');
+    }
+  };
 
   return (
     <div className="auth-container">
-      <img src='../assets/eduretrieve-logo.png' alt='logo-img' className='auth-container-img'/>
+      <img src="/assets/eduretrieve-logo.png" alt="logo" className="auth-container-img" />
       <div className="auth-form-card">
-        <div className='auth-header-flex'>
+        <div className="auth-header-flex">
           <h2>Login</h2>
-          <img src='../assets/eduretrieve-logo.png' alt='logo-img' className='auth-header-flex-img'/>
+          <img src="/assets/eduretrieve-logo.png" alt="logo" className="auth-header-flex-img" />
         </div>
+
         <form onSubmit={handleLogin}>
           <div className="form-group">
-            <label htmlFor="email">Email:</label>
+            <label>Email:</label>
             <input
               type="email"
-              id="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value) || setError('')}
-              required
-            /> 
-          </div>
-          <div className="form-group">
-            <label htmlFor="password">Password:</label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value) || setError('')}
+              onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
-          <p>
-            <Link to="/forgot-password">Forgot password?</Link>
-          </p>
+          <div className="form-group">
+            <label>Password:</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          <p><Link to="/forgot-password">Forgot password?</Link></p>
           <button type="submit">Login</button>
         </form>
-        {error && <p className="auth-message error">{error}</p>}
-        <p>
-          Don't have an account? <Link to="/signup">Sign up here</Link>
-        </p>
+
+        {error && <p className="auth-message error">❌ {error}</p>}
+
+        {unverifiedUser && (
+          <div style={{ marginTop: '1rem' }}>
+            <button onClick={handleResendVerification}>
+              Resend Verification Email
+            </button>
+          </div>
+        )}
+
+        <p>Don't have an account? <Link to="/signup">Sign up here</Link></p>
       </div>
     </div>
   );

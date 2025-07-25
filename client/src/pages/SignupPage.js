@@ -1,80 +1,138 @@
 import React, { useState } from 'react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth, db } from '../firebaseConfig';
-import { doc, setDoc } from 'firebase/firestore';
 import { useNavigate, Link } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 
 function SignupPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  // Form fields
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // UI states
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState('signup');
 
   const handleSignup = async (e) => {
     e.preventDefault();
     setError('');
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
 
-      await setDoc(doc(db, 'users', user.uid), {
-        email: user.email,
-        username: email.split('@')[0],
-        fullName: '',
-        pfpUrl: '',
-        createdAt: new Date(),
+    // Basic validations
+    if (!username.trim()) return setError('❗ Username is required.');
+    if (password !== confirmPassword) return setError('❗ Passwords do not match.');
+    if (password.length < 6) return setError('❗ Password must be at least 6 characters.');
+
+    setLoading(true);
+
+    try {
+      const { data, error: signupError } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
       });
 
-      console.log('User signed up:', user);
-      alert('Registration successful! Please login.');
-      navigate('/login');
+      if (signupError) throw signupError;
+      const user = data?.user;
+      if (!user) throw new Error('Signup failed. Please try again.');
+
+      const { error: profileError } = await supabase.from('users').insert([
+        {
+          id: user.id,
+          email: user.email,
+          username: username.trim(),
+          role: 'Student',
+          created_at: new Date().toISOString(),
+        },
+      ]);
+
+      if (profileError) throw profileError;
+
+      setStep('check-email');
     } catch (err) {
-      console.error('Signup error:', err.message);
-      setError(err.message);
+      console.error('❌ Signup error:', err);
+      setError(err.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="auth-container">
-      <img src='../assets/eduretrieve-logo.png' alt='logo-img' className='auth-container-img'/>
-      
+      <img src="/assets/eduretrieve-logo.png" alt="logo" className="auth-container-img" />
+
       <div className="auth-form-card">
-        <div className='auth-header-flex'>
-          <h2>Sign Up</h2>
-          <img src='../assets/eduretrieve-logo.png' alt='logo-img' className='auth-header-flex-img'/>
+        <div className="auth-header-flex">
+          <h2>{step === 'signup' ? 'Sign Up' : 'Verify Your Email'}</h2>
+          <img src="/assets/eduretrieve-logo.png" alt="logo" className="auth-header-flex-img" />
         </div>
-        
-        <form onSubmit={handleSignup}>
-          <div className="form-group">
-            <label htmlFor="email">Email:</label>
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value) || setError('')}
-              required
-            />
+
+        {step === 'signup' ? (
+          <form onSubmit={handleSignup} autoComplete="off">
+
+            <div className="form-group">
+              <label>Username:</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Email:</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Password:</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Confirm Password:</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            {error && <p className="auth-message error">{error}</p>}
+
+            <button type="submit" disabled={loading}>
+              {loading ? 'Signing up...' : 'Sign Up'}
+            </button>
+
+            <p className="auth-footer">
+              Already have an account? <Link to="/login">Login here</Link>
+            </p>
+          </form>
+        ) : (
+          <div className="check-email-section">
+            <p className="auth-message success">✅ Signup successful!</p>
+            <p className="auth-message">
+              📩 Please check your email and click the verification link before logging in.
+            </p>
+            <button onClick={() => navigate('/login')}>Go to Login</button>
           </div>
-          <div className="form-group">
-            <label htmlFor="password">Password:</label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value) || setError('')}
-              required
-            />
-          </div>
-          <button type="submit">Sign Up</button>
-        </form>
-        {error && <p className="auth-message error">{error}</p>}
-        <p>
-          Already have an account? <Link to="/login">Login here</Link>
-        </p>
+        )}
       </div>
     </div>
   );
 }
 
 export default SignupPage;
-

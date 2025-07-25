@@ -334,6 +334,74 @@ p#message, .auth-form-card .auth-message.success {
     font-size: 1.5em;
 }
 
+.profile-panel {
+  max-width: 500px;
+  margin: auto;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.profile-pfp-section {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.profile-pfp {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid #ccc;
+}
+
+.profile-pfp-placeholder {
+  font-size: 120px;
+  color: #ccc;
+}
+
+.pfp-upload-button {
+  margin-top: 0.5rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #007bff;
+}
+
+.remove-pfp-btn {
+  background: transparent;
+  border: none;
+  color: red;
+  margin-top: 5px;
+  cursor: pointer;
+}
+
+.profile-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.locked-input {
+  background-color: #f5f5f5;
+  border: none;
+}
+
+.profile-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.profile-message {
+  margin-top: 1rem;
+  font-weight: bold;
+}
+
 .dashboard-sidebar {
     width: 15%;
     background-color: #111827;
@@ -470,6 +538,87 @@ p#message, .auth-form-card .auth-message.success {
     background-color: #c0392b;
 }
 
+/* styles.css or in your main stylesheet */
+.analytics-panel {
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  max-width: 800px;
+  margin: 2rem auto;
+  font-family: Arial, sans-serif;
+}
+
+.analytics-panel h4 {
+  margin-bottom: 0.75rem;
+  font-size: 1.4rem;
+}
+
+.analytics-panel h5 {
+  margin-top: 1.5rem;
+  font-size: 1.2rem;
+}
+
+.analytics-panel ul {
+  list-style: none;
+  padding: 0;
+  margin-top: 1rem;
+}
+
+.analytics-panel li {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.analytics-panel p {
+  font-size: 0.95rem;
+}
+
+.error-message {
+  color: red;
+  font-weight: bold;
+}
+/* styles.css or in your main stylesheet */
+.analytics-panel {
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  max-width: 800px;
+  margin: 2rem auto;
+  font-family: Arial, sans-serif;
+}
+
+.analytics-panel h4 {
+  margin-bottom: 0.75rem;
+  font-size: 1.4rem;
+}
+
+.analytics-panel h5 {
+  margin-top: 1.5rem;
+  font-size: 1.2rem;
+}
+
+.analytics-panel ul {
+  list-style: none;
+  padding: 0;
+  margin-top: 1rem;
+}
+
+.analytics-panel li {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.analytics-panel p {
+  font-size: 0.95rem;
+}
+
+.error-message {
+  color: red;
+  font-weight: bold;
+}
+
 .dashboard-main-content {
     flex-grow: 1;
     padding: 0;
@@ -569,9 +718,18 @@ p#message, .auth-form-card .auth-message.success {
   background-color: #e2e2e2;
 }
 
+.verification-box {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: #f5f5f5;
+  border: 1px dashed #ccc;
+  font-size: 1.2rem;
+  text-align: center;
+}
+
 
 .dashboard-page {
-  padding-bottom: 40px; /* ✅ extra space at the bottom of entire page */
+  padding-bottom: 40px;
 }
 
 .module-card {
@@ -719,6 +877,122 @@ p#message, .auth-form-card .auth-message.success {
 .modal-cancel-btn {
   background-color: #eee; 
   color: #333;
+}
+
+.modals-overlay {
+  position: fixed;
+  top: 0rem;
+  left: -9rem;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+.modals-box {
+  background-color: #fff;
+  padding: 30px 24px;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  max-width: 500px;
+  width: 100%;
+  z-index: 1000;
+}
+
+.modals-box h3 {
+  margin-bottom: 20px;
+  font-size: 27px;
+  color: #333;
+  text-align: center;
+}
+
+.modals-box form {
+  display: flex;
+  flex-direction: column;
+}
+
+.modals-box label {
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #333;
+}
+
+.modals-box input[type="text"],
+.modals-box textarea,
+.modals-box input[type="file"] {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.modals-box input[type="text"]:focus,
+.modals-box textarea:focus {
+  border-color: #007bff;
+  outline: none;
+}
+
+.modals-box textarea {
+  resize: vertical;
+}
+
+.modals-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.modals-buttons button {
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+.modals-buttons button[type="submit"] {
+  background-color: #007bff;
+  font-size: 18px;
+  color: white;
+}
+
+.modals-buttons button[type="submit"]:hover {
+  background-color: #0c58a8;
+}
+
+.modals-buttons button[type="button"] {
+  background-color: #ccc;
+  color: #333;
+}
+
+.modals-buttons button[type="button"]:hover {
+  background-color: #bbb;
+}
+
+
+.floating-upload-button {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background-color: #007bff;
+  color: white;
+  padding: 10px 16px;
+  font-size: 18px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  z-index: 10;
+  transition: background-color 0.2s ease;
+}
+
+.floating-upload-button:hover {
+  background-color: #0c58a8;
 }
 
 .save-module-button {

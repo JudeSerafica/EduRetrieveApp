@@ -1,12 +1,22 @@
-const express = require('express');
-const cors = require('cors');
-const admin = require('firebase-admin');
-const multer = require('multer');
-const { createClient } = require('@supabase/supabase-js');
-const path = require('path');
+import dotenv from 'dotenv';
+dotenv.config();
+
+import express from 'express';
+import cors from 'cors';
+import nodemailer from 'nodemailer';
+import multer from 'multer';
+import { createClient } from '@supabase/supabase-js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
-const upload = multer(); // For handling multipart/form-data
+const upload = multer();
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // =========================
 // ✅ MIDDLEWARE SETUP
@@ -18,13 +28,6 @@ app.use(cors({
 app.use(express.json());
 
 // =========================
-// 🔐 FIREBASE ADMIN INIT
-// =========================
-admin.initializeApp({
-  credential: admin.credential.cert(require('./EduRetrieve-ServiceAccount.json')),
-});
-
-// =========================
 // 🧭 SUPABASE INIT
 // =========================
 const supabase = createClient(
@@ -32,10 +35,19 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRjZXBmbmRqc21rdHJmY2VsdmdzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTAwMDkxNiwiZXhwIjoyMDY2NTc2OTE2fQ.uSduSDirvbRdz5_2ySrVTp_sYPGcg6ddP6_XfMDZZKQ',
 );
 
+const transporter = nodemailer.createTransport({
+  host: 'smtp-relay.brevo.com',
+  port: 587,
+  auth: {
+    user: '92f59b001@smtp-brevo.com', // e.g. 92f59b001@smtp-brevo.com
+    pass: 'HOApx5mCz6714YKZ', // SMTP password, not API key
+  },
+});
+
 // =========================
-// ✅ FIREBASE TOKEN CHECK
+// ✅ AUTH MIDDLEWARE
 // =========================
-const verifyFirebaseToken = async (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -43,8 +55,12 @@ const verifyFirebaseToken = async (req, res, next) => {
     }
 
     const token = authHeader.split('Bearer ')[1];
-    const decoded = await admin.auth().verifyIdToken(token);
-    req.user = decoded;
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    req.user = data.user;
     next();
   } catch (err) {
     console.error('❌ Token verification failed:', err.message);
@@ -52,13 +68,83 @@ const verifyFirebaseToken = async (req, res, next) => {
   }
 };
 
+app.get('/api/protected-data', authenticateToken, (req, res) => {
+  res.json({ message: '🔐 Protected route accessed!', user: req.user });
+});
+// ✅ All your route handlers stay the same from here down...
+
+// ✅ User Signup (No Email Sending)
+app.post('/api/signup', async (req, res) => {
+  console.log('📦 Body received:', req.body);
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+
+    if (error) {
+      console.error('❌ Supabase signup error:', error.message);
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.status(200).json({
+      message: 'Signup successful',
+      user: data.user,
+    });
+  } catch (err) {
+    console.error('❌ Server error during signup:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/send-verification', async (req, res) => {
+  const { toEmail, subject, html } = req.body;
+
+  if (!toEmail || !subject || !html) {
+    return res.status(400).json({ error: 'Missing email content fields' });
+  }
+
+  try {
+    await transporter.sendMail({
+      from: '"EduRetrieve" <noreply@yourdomain.com>', // you can verify a sender domain in Brevo
+      to: toEmail,
+      subject,
+      html,
+    });
+
+    res.json({ message: 'Email sent successfully' });
+  } catch (error) {
+    console.error('❌ Email send error:', error);
+    res.status(500).json({ error: 'Failed to send email' });
+  }
+});
+
+app.get('/api/test-email', async (req, res) => {
+  try {
+    await resend.emails.send({
+      from: 'EduRetrieve <onboarding@resend.dev>',
+      to: 'your_email@gmail.com', // Replace with your real email
+      subject: 'Test Email from Resend',
+      html: '<strong>This is a test.</strong>',
+    });
+    res.send('✅ Email sent');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('❌ Failed to send test email');
+  }
+});
+
 // =========================
 // 📤 MODULE UPLOAD
 // =========================
-app.post('/upload-module', verifyFirebaseToken, upload.single('file'), async (req, res) => {
+app.post('/upload-module', authenticateToken, upload.single('file'), async (req, res) => {
   const { title, description } = req.body;
   const file = req.file;
-  const firebaseUid = req.user.uid;
+  const supabaseUid = req.user.id; // Supabase UID
+  const userEmail = req.user.email;
 
   if (!title || !description) {
     return res.status(400).json({ error: 'Missing title or description' });
@@ -69,11 +155,11 @@ app.post('/upload-module', verifyFirebaseToken, upload.single('file'), async (re
 
   try {
     if (file) {
-      // ✅ Allow only specific MIME types
+      // ✅ Only allow PDF, DOC, DOCX
       const allowedMimeTypes = [
         'application/pdf',
-        'application/msword', // .doc
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       ];
 
       if (!allowedMimeTypes.includes(file.mimetype)) {
@@ -81,8 +167,9 @@ app.post('/upload-module', verifyFirebaseToken, upload.single('file'), async (re
       }
 
       const fileExt = path.extname(file.originalname);
-      filePath = `${firebaseUid}/${Date.now()}${fileExt}`;
+      filePath = `${supabaseUid}/${Date.now()}${fileExt}`;
 
+      // 🔼 Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('eduretrieve')
         .upload(filePath, file.buffer, {
@@ -91,7 +178,7 @@ app.post('/upload-module', verifyFirebaseToken, upload.single('file'), async (re
         });
 
       if (uploadError) {
-        console.error('❌ Supabase upload error:', uploadError);
+        console.error('❌ Upload to storage failed:', uploadError.message);
         return res.status(500).json({ error: uploadError.message });
       }
 
@@ -100,7 +187,7 @@ app.post('/upload-module', verifyFirebaseToken, upload.single('file'), async (re
         .getPublicUrl(filePath);
 
       if (publicUrlError) {
-        console.error('❌ Get public URL error:', publicUrlError);
+        console.error('❌ Public URL generation failed:', publicUrlError.message);
         return res.status(500).json({ error: publicUrlError.message });
       }
 
@@ -110,39 +197,43 @@ app.post('/upload-module', verifyFirebaseToken, upload.single('file'), async (re
     const moduleData = {
       title,
       description,
-      uploadedBy: req.user.email,
+      uploadedBy: userEmail,
       uploadedAt: new Date().toISOString(),
-      user_id: firebaseUid,
-      file_url: fileUrl || null,
-      file_size: file ? file.size : null,
+      user_id: supabaseUid,
+      file_url: fileUrl,
+      file_path: filePath,
+      file_size: file?.size || null,
     };
 
-    const { data, error } = await supabase.from('modules').insert([moduleData]);
+    const { data, error: insertError } = await supabase
+      .from('modules')
+      .insert([moduleData])
+      .select(); // ✅ Force Supabase to return inserted rows
 
-    if (error) {
-      console.error('❌ Upload error (Supabase insert):', error);
+    if (insertError) {
+      console.error('❌ Failed to insert module:', insertError.message);
 
-      // ✅ Cleanup uploaded file if insert fails
+      // 🧹 Clean up uploaded file if database insert fails
       if (filePath) {
         await supabase.storage.from('eduretrieve').remove([filePath]);
       }
 
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: insertError.message });
     }
 
-    res.status(200).json({ message: 'Module uploaded successfully', data });
+    return res.status(200).json({ message: '✅ Module uploaded successfully', data });
   } catch (err) {
-    console.error('❌ Exception during upload:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Upload failed:', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // =========================
-// 💾 SAVE MODULE
+// 💾 SAVE MODULE 
 // =========================
-app.post('/save-module', verifyFirebaseToken, async (req, res) => {
+app.post('/save-module', authenticateToken, async (req, res) => {
   const { module_id, title } = req.body;
-  const firebaseUid = req.user.uid;
+  const supabaseUid = req.user.id;
 
   if (!module_id || !title) {
     return res.status(400).json({ error: 'Missing module_id or title' });
@@ -151,7 +242,7 @@ app.post('/save-module', verifyFirebaseToken, async (req, res) => {
   try {
     const { error } = await supabase.from('save_modules').insert([
       {
-        user_id: firebaseUid,
+        user_id: supabaseUid,
         module_id,
         title,
       },
@@ -165,24 +256,22 @@ app.post('/save-module', verifyFirebaseToken, async (req, res) => {
     res.status(200).json({ message: 'Module saved successfully' });
   } catch (err) {
     console.error('❌ Exception during save:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // =========================
 // 🗑️ UNSAVE MODULE
 // =========================
-app.post('/unsave-module', verifyFirebaseToken, async (req, res) => {
+app.post('/unsave-module', authenticateToken, async (req, res) => {
   const { module_id } = req.body;
-  const firebaseUid = req.user?.uid;
+  const supabaseUid = req.user?.id;
 
   if (!module_id) {
-    console.warn('⚠️ Missing module_id in request body');
     return res.status(400).json({ error: 'Missing module_id' });
   }
 
-  if (!firebaseUid) {
-    console.warn('⚠️ Firebase UID is missing from token');
+  if (!supabaseUid) {
     return res.status(401).json({ error: 'Unauthorized user' });
   }
 
@@ -190,9 +279,9 @@ app.post('/unsave-module', verifyFirebaseToken, async (req, res) => {
     const { data, error } = await supabase
       .from('save_modules')
       .delete()
-      .eq('user_id', firebaseUid)
+      .eq('user_id', supabaseUid)
       .eq('module_id', module_id)
-      .select(); // returns deleted rows for verification
+      .select();
 
     if (error) {
       console.error('❌ Supabase delete error (unsave_modules):', error);
@@ -200,11 +289,10 @@ app.post('/unsave-module', verifyFirebaseToken, async (req, res) => {
     }
 
     if (!data || data.length === 0) {
-      console.warn(`⚠️ No saved module found to delete for user ${firebaseUid} and module ${module_id}`);
       return res.status(404).json({ error: 'Saved module not found' });
     }
 
-    console.log(`🗑️ Unsave successful for user ${firebaseUid}, module ${module_id}`);
+    console.log(`🗑️ Unsave successful for user ${supabaseUid}, module ${module_id}`);
     res.status(200).json({ message: 'Module unsaved successfully', unsaved: data[0] });
   } catch (err) {
     console.error('❌ Exception during unsave:', err.message);
@@ -212,18 +300,18 @@ app.post('/unsave-module', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-
 // =========================
 // 📥 GET SAVED MODULES
 // =========================
-app.get('/get-saved-modules', verifyFirebaseToken, async (req, res) => {
-  const firebaseUid = req.user.uid;
+app.get('/get-saved-modules', authenticateToken, async (req, res) => {
+  const supabaseUid = req.user.id;
 
   try {
+    // Get saved module IDs for the user
     const { data: savedRows, error: fetchError } = await supabase
       .from('save_modules')
       .select('module_id')
-      .eq('user_id', firebaseUid);
+      .eq('user_id', supabaseUid);
 
     if (fetchError) {
       console.error('❌ Supabase fetch error (save_modules):', fetchError);
@@ -236,11 +324,11 @@ app.get('/get-saved-modules', verifyFirebaseToken, async (req, res) => {
       return res.status(200).json({ modules: [] });
     }
 
+    // Fetch full module data
     const { data: modules, error: modulesError } = await supabase
       .from('modules')
       .select('*')
       .in('id', moduleIds)
-      .eq('user_id', firebaseUid)
       .order('uploadedAt', { ascending: false });
 
     if (modulesError) {
@@ -256,11 +344,11 @@ app.get('/get-saved-modules', verifyFirebaseToken, async (req, res) => {
 });
 
 // ✅ DELETE MODULE + file + saved entries
-app.delete('/delete-module/:id', verifyFirebaseToken, async (req, res) => {
+app.delete('/delete-module/:id', authenticateToken, async (req, res) => {
   const moduleId = req.params.id;
-  const firebaseUid = req.user?.uid;
+  const supabaseUid = req.user?.id;
 
-  if (!firebaseUid || !moduleId) {
+  if (!supabaseUid || !moduleId) {
     return res.status(400).json({ error: 'Missing user or module ID' });
   }
 
@@ -270,7 +358,7 @@ app.delete('/delete-module/:id', verifyFirebaseToken, async (req, res) => {
       .from('modules')
       .select('file_path')
       .eq('id', moduleId)
-      .eq('user_id', firebaseUid)
+      .eq('user_id', supabaseUid)
       .single();
 
     if (fetchError) {
@@ -285,7 +373,7 @@ app.delete('/delete-module/:id', verifyFirebaseToken, async (req, res) => {
       .from('save_modules')
       .delete()
       .eq('module_id', moduleId)
-      .eq('user_id', firebaseUid);
+      .eq('user_id', supabaseUid);
 
     if (saveDeleteError) {
       console.warn('⚠️ Failed to delete related save_modules:', saveDeleteError.message);
@@ -296,17 +384,17 @@ app.delete('/delete-module/:id', verifyFirebaseToken, async (req, res) => {
       .from('modules')
       .delete()
       .eq('id', moduleId)
-      .eq('user_id', firebaseUid);
+      .eq('user_id', supabaseUid);
 
     if (moduleDeleteError) {
       throw new Error(`Failed to delete module: ${moduleDeleteError.message}`);
     }
 
-    // Step 4: Delete from Supabase Storage
+    // Step 4: Delete file from Supabase Storage
     if (filePath) {
       const { error: storageError } = await supabase
         .storage
-        .from('module_files') // ✅ make sure this is your actual bucket name
+        .from('eduretrieve') // 🛠️ Replace with correct bucket if different
         .remove([filePath]);
 
       if (storageError) {
@@ -322,55 +410,64 @@ app.delete('/delete-module/:id', verifyFirebaseToken, async (req, res) => {
 });
 
 // Create or update user profile
-app.post('/sync-user-profile', verifyFirebaseToken, async (req, res) => {
-  const firebaseUser = req.user;
-  const { username, fullName, pfpUrl } = req.body;
+// ⬅ Middleware must already decode the Supabase token
+// 🔐 POST /sync-user-profile
+app.post('/sync-user-profile', authenticateToken, async (req, res) => {
+  const supabaseUser = req.user;
+  const { username = '', fullName = '', pfpUrl = '' } = req.body;
+
+  if (!supabaseUser?.id || !supabaseUser?.email) {
+    return res.status(400).json({ error: 'Missing user ID or email' });
+  }
 
   try {
-    // First check if user exists
+    // 🔍 Check if user profile already exists
     const { data: existing, error: fetchError } = await supabase
       .from('users')
-      .select('*')
-      .eq('user_id', firebaseUser.uid);
+      .select('user_id')
+      .eq('user_id', supabaseUser.id)
+      .maybeSingle();
 
     if (fetchError) {
-      console.error('❌ Fetch error (users):', fetchError.message);
-      return res.status(500).json({ error: fetchError.message });
+      console.error('❌ Fetch error:', fetchError.message);
+      return res.status(500).json({ error: 'Error checking existing profile' });
     }
 
-    if (existing.length === 0) {
-      // 🔹 Insert new user
-      const { error: insertError } = await supabase.from('users').insert([{
-        user_id: firebaseUser.uid,
-        email: firebaseUser.email,
-        username: username || '',
-        fullName: fullName || '',
-        pfpUrl: pfpUrl || ''
-      }]);
+    if (!existing) {
+      // ➕ Insert new user profile
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert([{
+          user_id: supabaseUser.id,
+          email: supabaseUser.email,
+          username,
+          fullName,
+          pfpUrl,
+        }]);
 
       if (insertError) {
         console.error('❌ Insert error:', insertError.message);
-        return res.status(500).json({ error: insertError.message });
+        return res.status(500).json({ error: 'Failed to create profile' });
       }
 
-      return res.status(200).json({ message: 'Profile successfully created' });
+      return res.status(201).json({ message: '✅ Profile created successfully' });
     } else {
-      // 🔄 Update existing user
+      // 🔁 Update existing profile
       const { error: updateError } = await supabase
         .from('users')
         .update({
           username,
           fullName,
-          pfpUrl
+          pfpUrl,
         })
-        .eq('user_id', firebaseUser.uid);
+        .eq('user_id', supabaseUser.id);
 
       if (updateError) {
         console.error('❌ Update error:', updateError.message);
-        return res.status(500).json({ error: updateError.message });
+        return res.status(500).json({ error: 'Failed to update profile' });
       }
 
-      return res.status(200).json({ message: 'Your profile has been updated successfully!' });
+      return res.status(200).json({ message: '✅ Profile updated successfully' });
     }
   } catch (err) {
     console.error('❌ Server error:', err.message);
@@ -378,24 +475,34 @@ app.post('/sync-user-profile', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-app.get('/get-user-profile', verifyFirebaseToken, async (req, res) => {
-  try {
-    const firebaseUid = req.user.uid;
+// 🔍 GET /get-user-profile
+app.get('/get-user-profile', authenticateToken, async (req, res) => {
+  const userId = req.user?.id;
 
-    const { data, error } = await supabase
+  if (!userId) {
+    return res.status(400).json({ error: 'Missing user ID' });
+  }
+
+  try {
+    const { data: profile, error } = await supabase
       .from('users')
-      .select('*')
-      .eq('user_id', firebaseUid)
-      .single();
+      .select('username, fullName, pfpUrl')
+      .eq('user_id', userId)
+      .maybeSingle();
 
     if (error) {
-      return res.status(500).json({ error: error.message });
+      console.error('❌ Fetch error:', error.message);
+      return res.status(500).json({ error: 'Failed to fetch profile' });
     }
 
-    res.status(200).json({ profile: data });
+    if (!profile) {
+      return res.status(404).json({ error: 'User profile not found' });
+    }
+
+    return res.status(200).json({ profile });
   } catch (err) {
-    console.error('❌ Get profile error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Server error:', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -404,60 +511,71 @@ app.get('/get-user-profile', verifyFirebaseToken, async (req, res) => {
 // =========================
 app.get('/api/analytics/:uid', async (req, res) => {
   const { uid } = req.params;
-
-  if (!uid) {
-    return res.status(400).json({ error: 'Missing user ID' });
-  }
+  if (!uid) return res.status(400).json({ error: 'Missing user ID' });
 
   try {
-    const { count: uploadedCount, error: uploadError } = await supabase
-      .from('modules')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', uid);
+    // Fetch uploaded and saved counts in parallel
+    const [
+      { count: uploadedCount, error: uploadError },
+      { count: savedCount, error: savedError }
+    ] = await Promise.all([
+      supabase.from('modules').select('*', { count: 'exact', head: true }).eq('user_id', uid),
+      supabase.from('save_modules').select('*', { count: 'exact', head: true }).eq('user_id', uid)
+    ]);
 
-    if (uploadError) {
-      throw uploadError;
+    if (uploadError || savedError) {
+      console.error('❌ Count error:', uploadError?.message || savedError?.message);
+      return res.status(500).json({ error: 'Failed to retrieve analytics counts.' });
     }
 
-    const { count: savedCount, error: savedError } = await supabase
-      .from('save_modules')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', uid);
-
-    if (savedError) {
-      throw savedError;
-    }
-
-    res.status(200).json({
+    return res.status(200).json({
       modulesUploaded: uploadedCount || 0,
-      modulesSaved: savedCount || 0,
-      discussionsParticipated: 0, // 🔹 Placeholder
+      modulesSaved: savedCount || 0
     });
   } catch (err) {
     console.error('❌ Analytics fetch error:', err.message);
-    res.status(500).json({ error: 'Failed to retrieve analytics data.' });
+    return res.status(500).json({ error: 'Failed to retrieve analytics data.' });
   }
 });
 
-app.get('/api/chat/history', verifyFirebaseToken, async (req, res) => {
-  const uid = req.user?.uid;
+app.post('/api/generate-content', authenticateToken, async (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt) return res.status(400).json({ error: 'Missing prompt.' });
 
   try {
-    const { data, error } = await supabase
-      .from('chats') // ✅ Make sure this is your actual Supabase table
-      .select('*')
-      .eq('user_id', uid);
-
-    if (error) {
-      console.error('❌ Supabase fetch error (chat history):', error.message);
-      return res.status(500).json({ error: 'Failed to retrieve chat history.' });
-    }
-
-    res.status(200).json({ chatHistory: data });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // ✅ latest valid model
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    res.json({ generatedContent: text });
   } catch (err) {
-    console.error('❌ Server crash in /api/chat/history:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Gemini error:', err.message);
+    res.status(500).json({ error: 'AI failed to generate a response.' });
+    console.log('📩 Prompt received from frontend:', prompt);
   }
+});
+
+app.post('/api/track-session', async (req, res) => {
+  const { userId, durationMinutes } = req.body;
+  const today = new Date().toISOString().split('T')[0];
+
+  if (!userId || !durationMinutes) {
+    return res.status(400).json({ error: 'Missing userId or duration.' });
+  }
+
+  const { data, error } = await supabase
+    .from('user_sessions')
+    .upsert({
+      user_id: userId,
+      date: today,
+      duration_minutes: durationMinutes,
+    }, { onConflict: ['user_id', 'date'], merge: true });
+
+  if (error) {
+    console.error('[Session Tracking Error]', error);
+    return res.status(500).json({ error: 'Failed to track session.' });
+  }
+
+  res.status(200).json({ success: true });
 });
 
 
@@ -465,13 +583,13 @@ app.get('/api/chat/history', verifyFirebaseToken, async (req, res) => {
 // 🏁 ROOT ROUTE
 // =========================
 app.get('/', (req, res) => {
-  res.send('✅ EduRetrieve backend is running!');
+  res.send('✅ EduRetrieve backend is running with Supabase Auth!');
 });
 
 // =========================
 // 🚀 START SERVER
 // =========================
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server is running at http://localhost:${PORT}`);
 });

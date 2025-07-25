@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { signOut } from 'firebase/auth';
-import { auth } from '../firebaseConfig';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 import { FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 import ProfileModal from './ProfileModal';
 
@@ -16,7 +15,9 @@ function Header({ user }) {
 
   const confirmLogout = async () => {
     try {
-      await signOut(auth);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
       console.log('User logged out');
       navigate('/login');
     } catch (error) {
@@ -49,7 +50,7 @@ function Header({ user }) {
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="logout-modal" onClick={e => e.stopPropagation()}>
+          <div className="logout-modal" onClick={(e) => e.stopPropagation()}>
             <p>Are you sure you want to logout?</p>
             <div className="modal-buttons">
               <button onClick={confirmLogout} className="confirm-button">Logout</button>
@@ -69,5 +70,3 @@ function Header({ user }) {
 }
 
 export default Header;
-
-

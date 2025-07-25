@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from '../firebaseConfig';
 import { useNavigate, Outlet } from 'react-router-dom';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
+import { supabase } from '../supabaseClient';
 import '../styles/App.css';
 
 function DashboardLayout() {
@@ -12,19 +11,42 @@ function DashboardLayout() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+    const initSession = async () => {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error('Error fetching session:', error.message);
+        setUser(null);
+      } else {
+        setUser(session?.user || null);
+        if (!session?.user) {
+          navigate('/login');
+        }
+      }
+
       setLoading(false);
-      if (!currentUser) {
+    };
+
+    initSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+      if (!session?.user) {
         navigate('/login');
       }
     });
-    return () => unsubscribe();
+
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
       console.log('User logged out');
       navigate('/login');
     } catch (error) {

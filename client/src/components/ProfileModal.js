@@ -14,6 +14,7 @@ function ProfileModal({ isOpen, onClose, user }) {
         <button className="modal-close-button" onClick={onClose}>
           <FaTimes />
         </button>
+
         <div className="modal-tabs">
           <button
             className={`modal-tab-button ${activeTab === 'profile' ? 'active' : ''}`}
@@ -28,6 +29,7 @@ function ProfileModal({ isOpen, onClose, user }) {
             Progress Analytics
           </button>
         </div>
+
         <div className="modal-panel-container">
           {activeTab === 'profile' && <UserProfile user={user} />}
           {activeTab === 'analytics' && <ProgressAnalytics user={user} />}

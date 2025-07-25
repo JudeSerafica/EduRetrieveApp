@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { FaHome, FaComments, FaUpload, FaBookmark, FaSignOutAlt } from 'react-icons/fa';
+import { FaHome, FaComments, FaBookmark, FaSignOutAlt } from 'react-icons/fa';
 
 function Sidebar({ onLogout }) {
   const [showModal, setShowModal] = useState(false);
@@ -25,11 +25,8 @@ function Sidebar({ onLogout }) {
         <NavLink to="/dashboard/chats" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
           <FaComments className="sidebar-icon" /> Chats
         </NavLink>
-        <NavLink to="/dashboard/upload" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-          <FaUpload className="sidebar-icon" /> Upload
-        </NavLink>
         <NavLink to="/dashboard/saves" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-          <FaBookmark className="sidebar-icon" /> Saves
+          <FaBookmark className="sidebar-icon" /> Bookmarks
         </NavLink>
       </div>
 
@@ -55,6 +52,3 @@ function Sidebar({ onLogout }) {
 }
 
 export default Sidebar;
-
-
-

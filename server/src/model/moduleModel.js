@@ -1,95 +1,95 @@
-const admin = require('firebase-admin');
-const adminDb = admin.firestore();
-const { FieldValue } = admin.firestore;
-
+const { supabase } = require('../config/supabaseClient');
 /**
- * Creates a new module document in Firestore.
+ * Creates a new module record in Supabase.
  * @param {Object} moduleData The data for the new module (title, description, uploadedBy).
- * @returns {Promise<Object>} The created module data including its ID.
+ * @returns {Promise<Object>} The created module record including its ID.
  */
 async function createModule(moduleData) {
-  try {
-    const dataToSave = {
-      ...moduleData,
-      uploadedAt: FieldValue.serverTimestamp(),
-    };
+  const { title, description, uploadedBy } = moduleData;
+  const { data, error } = await supabase
+    .from('modules')
+    .insert([{ title, description, uploadedBy }])
+    .select()
+    .single();
 
-    const moduleRef = await adminDb.collection('modules').add(dataToSave);
-    return { id: moduleRef.id, ...dataToSave };
-  } catch (error) {
+  if (error) {
     console.error('Error creating module:', error);
     throw new Error('Could not create module.');
   }
+
+  return data;
 }
 
 /**
- * Fetches all modules from Firestore, ordered by upload date.
- * @returns {Promise<Array<Object>>} An array of module documents.
+ * Fetches all modules from Supabase, ordered by uploadedAt descending.
+ * @returns {Promise<Array<Object>>} Array of module records.
  */
 async function getAllModules() {
-  try {
-    const modulesSnapshot = await adminDb.collection('modules').orderBy('uploadedAt', 'desc').get();
-    const modules = [];
-    modulesSnapshot.forEach(doc => {
-      modules.push({ id: doc.id, ...doc.data() });
-    });
-    return modules;
-  } catch (error) {
+  const { data, error } = await supabase
+    .from('modules')
+    .select('*')
+    .order('uploadedAt', { ascending: false });
+
+  if (error) {
     console.error('Error fetching all modules:', error);
     throw new Error('Could not fetch modules.');
   }
+
+  return data;
 }
 
 /**
- * Fetches a single module by its ID.
- * @param {string} moduleId The ID of the module.
- * @returns {Promise<Object|null>} The module data or null if not found.
+ * Fetches a single module by ID.
+ * @param {string} moduleId
+ * @returns {Promise<Object|null>}
  */
 async function getModuleById(moduleId) {
-  try {
-    const moduleDocRef = adminDb.collection('modules').doc(moduleId);
-    const moduleDocSnap = await moduleDocRef.get();
-    if (moduleDocSnap.exists) {
-      return { id: moduleDocSnap.id, ...moduleDocSnap.data() };
-    }
-    return null;
-  } catch (error) {
+  const { data, error } = await supabase
+    .from('modules')
+    .select('*')
+    .eq('id', moduleId)
+    .single();
+
+  if (error) {
     console.error('Error fetching module by ID:', error);
-    throw new Error('Could not fetch module.');
+    return null;
+  }
+
+  return data;
+}
+
+/**
+ * Updates a module by ID.
+ * @param {string} moduleId
+ * @param {Object} updateData
+ */
+async function updateModule(moduleId, updateData) {
+  const { error } = await supabase
+    .from('modules')
+    .update(updateData)
+    .eq('id', moduleId);
+
+  if (error) {
+    console.error('Error updating module:', error);
+    throw new Error('Could not update module.');
   }
 }
 
 /**
- * Updates an existing module.
- * @param {string} moduleId The ID of the module to update.
- * @param {Object} updateData The data to update.
- * @returns {Promise<void>}
- */
-async function updateModule(moduleId, updateData) {
-    try {
-        const moduleDocRef = adminDb.collection('modules').doc(moduleId);
-        await moduleDocRef.update(updateData);
-    } catch (error) {
-        console.error('Error updating module:', error);
-        throw new Error('Could not update module.');
-    }
-}
-
-/**
- * Deletes a module.
- * @param {string} moduleId The ID of the module to delete.
- * @returns {Promise<void>}
+ * Deletes a module by ID.
+ * @param {string} moduleId
  */
 async function deleteModule(moduleId) {
-    try {
-        const moduleDocRef = adminDb.collection('modules').doc(moduleId);
-        await moduleDocRef.delete();
-    } catch (error) {
-        console.error('Error deleting module:', error);
-        throw new Error('Could not delete module.');
-    }
-}
+  const { error } = await supabase
+    .from('modules')
+    .delete()
+    .eq('id', moduleId);
 
+  if (error) {
+    console.error('Error deleting module:', error);
+    throw new Error('Could not delete module.');
+  }
+}
 
 module.exports = {
   createModule,

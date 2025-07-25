@@ -2,17 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { FaRegBookmark } from 'react-icons/fa';
 import useAuthStatus from '../hooks/useAuthStatus';
+import { toast } from 'react-toastify';
 
 function Dashboard() {
   const { user, authLoading } = useAuthStatus();
-  const [modules, setModules] = useState([]);
+  const [modules, setModules] = useState([]); 
   const [savedModuleIds, setSavedModuleIds] = useState(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [moduleToDelete, setModuleToDelete] = useState(null);
 
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [file, setFile] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
+
   useEffect(() => {
     if (authLoading || !user) return;
-    console.log('✅ User ready:', user.uid);
+    console.log('✅ User ready:', user.id);
   }, [authLoading, user]);
 
   useEffect(() => {
@@ -39,7 +48,7 @@ function Dashboard() {
       const { data, error } = await supabase
         .from('save_modules')
         .select('module_id')
-        .eq('user_id', user.uid);
+        .eq('user_id', user.id);
 
       if (error) {
         console.error('❌ Saved fetch error:', error.message);
@@ -53,28 +62,31 @@ function Dashboard() {
 
   const handleToggleSave = async (moduleId, moduleTitle) => {
     if (!user) {
-      alert('You must be logged in to save modules.');
+      toast.warning('⚠️ You must be logged in to save modules.');
       return;
     }
 
     const isSaved = savedModuleIds.has(moduleId);
+    if (isSaved) {
+      toast.info('⚠️ Module already saved.');
+      return;
+    }
 
     try {
-      if (!isSaved) {
-        const { error } = await supabase.from('save_modules').insert({
-          module_id: moduleId,
-          user_id: user.uid,
-          title: moduleTitle,
-        });
+      const { error } = await supabase.from('save_modules').insert({
+        module_id: moduleId,
+        user_id: user.id,
+        title: moduleTitle,
+      });
 
-        if (error) throw new Error(error.message);
+      if (error) throw new Error(error.message);
 
-        setSavedModuleIds(prev => new Set(prev).add(moduleId));
-        window.dispatchEvent(new Event('saved-modules-updated'));
-      }
+      setSavedModuleIds(prev => new Set(prev).add(moduleId));
+      window.dispatchEvent(new Event('saved-modules-updated'));
+      toast.success('✅ Module saved!');
     } catch (err) {
       console.error('❌ Save error:', err.message);
-      alert(`Error: ${err.message}`);
+      toast.error(`❌ Save failed: ${err.message}`);
     }
   };
 
@@ -87,13 +99,16 @@ function Dashboard() {
     if (!moduleToDelete) return;
 
     try {
-      const token = await user.getIdToken();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      const res = await fetch(`http://localhost:4000/delete-module/${moduleToDelete}`, {
+      const token = session?.access_token;
+      if (!token) throw new Error('Missing token');
+
+      const res = await fetch(`http://localhost:5000/delete-module/${moduleToDelete}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       const result = await res.json();
@@ -104,7 +119,7 @@ function Dashboard() {
       updatedSaved.delete(moduleToDelete);
       setSavedModuleIds(updatedSaved);
 
-      alert('✅ Module deleted successfully');
+      toast.success('🗑️ Module deleted!');
     } catch (err) {
       console.error('❌ Delete error:', err.message);
       alert(`Delete failed: ${err.message}`);
@@ -114,9 +129,57 @@ function Dashboard() {
     }
   };
 
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setMessage('');
+
+    if (!title || !description) {
+      setMessage('❌ Title and description are required.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const token = session?.access_token;
+      if (!token) throw new Error('Missing auth token');
+
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('description', description);
+      if (file) formData.append('file', file);
+
+      const res = await fetch('http://localhost:5000/upload-module', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Upload failed');
+
+      setModules(prev => [result.data[0], ...prev]); // insert returns array
+      toast.success('✅ Module uploaded!');
+      setShowUploadModal(false);
+      setTitle('');
+      setDescription('');
+      setFile(null);
+    } catch (err) {
+      console.error('❌ Upload error:', err.message);
+      setMessage(`❌ Upload failed: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
   return (
     <div className="dashboard-page">
       <h2>Available Modules</h2>
+      <div className="scrollable-module-area"></div>
       <div className="module-list">
         {modules.map((module) => (
           <div key={module.id} className="module-card">
@@ -162,13 +225,42 @@ function Dashboard() {
         ))}
       </div>
 
+                {/* ✅ Floating Upload Button */}
+    <button onClick={() => setShowUploadModal(true)} className="floating-upload-button">
+      ＋Upload New Module
+    </button>
+    
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="modals-overlay">
+          <div className="modals-box">
+            <h3>Upload Module</h3>
+            <form onSubmit={handleUpload}>
+              <label>Module Title:</label>
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} required 
+              placeholder="e.g., Introduction to Calculus"/>
+              <label>Module Outline/Description:</label>
+              <textarea value={description} onChange={e => setDescription(e.target.value)} rows="6" required
+                placeholder="Provide a detailed outline of the module topics, learning objectives, etc."></textarea>
+              <label>Attach a file (optional):</label>
+              <input type="file" accept=".pdf,.doc,.docx" onChange={e => setFile(e.target.files[0])} />
+              <div className="modals-buttons">
+                <button type="button" onClick={() => setShowUploadModal(false)}>Cancel</button>
+                <button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Submitting...' : 'Submit Module Outline'}</button>
+              </div>
+              {message && <p>{message}</p>}
+            </form>
+          </div>
+        </div>
+      )}
+
       {showDeleteModal && (
         <div className="modal-overlay">
           <div className="modal-box">
-            <p>Are you sure you want to delete?</p> {/* Changed the message */}
+            <p>Are you sure you want to delete?</p>
             <div className="modal-buttons">
               <button className="modal-logout-btn" onClick={handleConfirmDelete}>
-                Logout
+                Delete
               </button>
               <button className="modal-cancel-btn" onClick={() => setShowDeleteModal(false)}>
                 Cancel
@@ -178,7 +270,6 @@ function Dashboard() {
         </div>
       )}
     </div>
-
   );
 }
 
